@@ -105,6 +105,18 @@ private:
     bool receiveCloneData(const string& repo_name);
     bool processCloneFile(const fs::path& local_repo_path, const ProtocolMessage& file_msg);
     void setRemoteConfigForClone(const fs::path& local_repo_path, const string& repo_name);
+    
+    // 智能push相关的辅助方法
+    vector<string> getCommitsToUpload(const string& local_head, const string& remote_head);
+    bool uploadCommit(const string& commit_id);
+    bool uploadObject(const string& object_id);
+    
+    // 智能pull相关的辅助方法
+    vector<string> getCommitsToDownload(const string& local_head, const string& remote_head);
+    bool downloadCommit(const string& commit_id);
+    bool downloadObject(const string& object_id);
+    bool receiveCommitData(const ProtocolMessage& msg);
+    bool receiveObjectData(const ProtocolMessage& msg);
 };
 
 /**

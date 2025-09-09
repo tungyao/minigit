@@ -25,8 +25,13 @@ fs::path FileSystemUtils::configPath() {
 }
 
 bool FileSystemUtils::isIgnored(const fs::path& p) {
-	// ignore .minigit itself
-	return p.string().find(MARKNAME) != string::npos;
+	// ignore .minigit itself and common build/IDE directories
+	string path_str = p.string();
+	return path_str.find(MARKNAME) != string::npos ||
+	       path_str.find("\\.vs\\") != string::npos ||
+	       path_str.find("\\build\\") != string::npos ||
+	       path_str.find("\\.git\\") != string::npos ||
+	       path_str.find("\\CMakeFiles\\") != string::npos;
 }
 
 void FileSystemUtils::ensureRepo() {

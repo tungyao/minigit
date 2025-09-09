@@ -64,7 +64,11 @@ private:
     bool handleCreateRepoRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
     bool handleRemoveRepoRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
     bool handlePushRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+    bool handlePushCheckRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+    bool handlePushCommitData(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+    bool handlePushObjectData(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
     bool handlePullRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+    bool handlePullCheckRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
     bool handleCloneRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
     bool handleHeartbeat(int client_socket, shared_ptr<class ClientSession> session);
     
@@ -72,6 +76,9 @@ private:
     void cleanupExpiredSessions();
     void sendErrorResponse(int client_socket, StatusCode status, const string& message);
     bool sendCloneFile(int client_socket, const string& relative_path, const fs::path& file_path);
+    
+    // Push验证方法
+    bool validatePushCommitIsLatest(const string& repo_name, const string& client_commit_parent, const string& current_remote_head);
 
 };
 

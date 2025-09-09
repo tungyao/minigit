@@ -350,6 +350,29 @@ bool Server::createServerSocket() {
 	return true;
 }
 
+// Push验证方法：检查客户端提交的commit是否是最新的
+bool Server::validatePushCommitIsLatest(const string& repo_name, const string& client_commit_parent, const string& current_remote_head) {
+	// 如果远程仓库是空的（没有HEAD），则允许任何提交
+	if (current_remote_head.empty()) {
+		return true;
+	}
+
+	// 如果客户端的commit父节点与当前远程HEAD相同，则是最新的
+	if (client_commit_parent == current_remote_head) {
+		return true;
+	}
+
+	// 如果客户端的commit没有父节点（初始提交），但远程已经有提交了，则不允许
+	if (client_commit_parent.empty() && !current_remote_head.empty()) {
+		return false;
+	}
+
+	// 其他情况下，需要检查客户端的父节点是否在远程的提交历史中
+	// 这里进行简化处理：只检查直接父子关系
+	// 在更复杂的实现中，需要遍历整个提交历史树
+	return false;
+}
+
 // 处理客户端连接
 void Server::handleClient(int client_socket) {
 	auto session = make_shared<ClientSession>(client_socket);
@@ -420,14 +443,26 @@ bool Server::processMessage(int client_socket, shared_ptr<ClientSession> session
 	case MessageType::PUSH_REQUEST:
 		return handlePushRequest(client_socket, session, msg);
 
+	case MessageType::PUSH_CHECK_REQUEST:
+		return handlePushCheckRequest(client_socket, session, msg);
+
+	case MessageType::PUSH_COMMIT_DATA:
+		return handlePushCommitData(client_socket, session, msg);
+
+	case MessageType::PUSH_OBJECT_DATA:
+		return handlePushObjectData(client_socket, session, msg);
+
 	case MessageType::PULL_REQUEST:
 		return handlePullRequest(client_socket, session, msg);
+
+	case MessageType::PULL_CHECK_REQUEST:
+		return handlePullCheckRequest(client_socket, session, msg);
 
 	case MessageType::CLONE_REQUEST:
 		return handleCloneRequest(client_socket, session, msg);
 
 	case MessageType::HEARTBEAT:
-		return handleHeartbeat(client_socket, session);
+		return 1;
 
 	default:
 		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Unknown message type");
@@ -657,8 +692,9 @@ bool Server::handleRemoveRepoRequest(int client_socket, shared_ptr<ClientSession
 	}
 }
 
-// 推送请求处理
-bool Server::handlePushRequest(int client_socket, shared_ptr<ClientSession> session, const ProtocolMessage& msg) {
+// 推送请求处理（最终的push请求，更新远程HEAD）
+bool Server::handlePushRequest(int client_socket, shared_ptr<ClientSession> session,
+	const ProtocolMessage& msg) {
 	if (!session->authenticated) {
 		sendErrorResponse(client_socket, StatusCode::AUTH_REQUIRED, "Authentication required");
 		return false;
@@ -669,12 +705,329 @@ bool Server::handlePushRequest(int client_socket, shared_ptr<ClientSession> sess
 		return false;
 	}
 
-	// TODO: 实现推送逻辑
+	// 获取仓库路径
+	fs::path repo_path = impl_->repo_manager->getRepositoryPath(session->current_repo);
+	if (!fs::exists(repo_path)) {
+		sendErrorResponse(client_socket, StatusCode::REPO_NOT_FOUND, "Repository not found");
+		return false;
+	}
+	// 获取当前远程HEAD用于验证
+	string current_remote_head;
+	fs::path remote_head_path = repo_path / MARKNAME / "HEAD";
+	if (fs::exists(remote_head_path)) {
+		try {
+			ifstream head_file(remote_head_path);
+			if (head_file.is_open()) {
+				getline(head_file, current_remote_head);
+				head_file.close();
+				// 移除尾部的换行符
+				while (!current_remote_head.empty() && (current_remote_head.back() == '\n' || current_remote_head.back() == '\r')) {
+					current_remote_head.pop_back();
+				}
+			}
+		}
+		catch (const exception& e) {
+			// 如果读取失败，视为空仓库
+			current_remote_head.clear();
+		}
+	}
+
+	// 解析客户端的HEAD
+	if (msg.payload.size() < sizeof(PushRequestPayload)) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Invalid push request request");
+		return false;
+	}
+
+	PushRequestPayload request_payload;
+	memcpy(&request_payload, msg.payload.data(), sizeof(PushRequestPayload));
+
+	string new_remote_head;
+	if (request_payload.remote_head_length > 0) {
+		if (msg.payload.size() < sizeof(PushRequestPayload) + request_payload.remote_head_length) {
+			sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Invalid local head data");
+			return false;
+		}
+		new_remote_head = string(reinterpret_cast<const char*>(msg.payload.data() + sizeof(PushRequestPayload)),
+			request_payload.remote_head_length);
+	}
+
+	// 验证客户端提交的commit是否是最新的
+	if (!new_remote_head.empty()) {
+		// 从服务器的objects目录中读取客户端提交的commit数据来获取其父节点
+		string client_commit_parent;
+		fs::path commit_obj_path = repo_path / MARKNAME / "objects" / new_remote_head;
+		if (fs::exists(commit_obj_path)) {
+			try {
+				ifstream commit_file(commit_obj_path, ios::binary);
+				if (commit_file.is_open()) {
+					vector<uint8_t> commit_data((istreambuf_iterator<char>(commit_file)), {});
+					commit_file.close();
+
+					// 解析commit数据获取父节点
+					string commit_content = string(commit_data.begin(), commit_data.end());
+					Commit commit = CommitManager::deserializeCommit(new_remote_head + "\n" + commit_content);
+					client_commit_parent = commit.parent;
+				}
+			}
+			catch (const exception& e) {
+				// 如果无法解析commit，拒绝push
+				sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Cannot parse commit data");
+				return false;
+			}
+		}
+		else {
+			// 如果commit对象不存在，说明客户端没有先上传commit数据
+			sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Commit object not found, please upload commit data first");
+			return false;
+		}
+
+		// 验证提交是否基于最新版本
+		if (!validatePushCommitIsLatest(session->current_repo, client_commit_parent, current_remote_head)) {
+			sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST,
+				"Push rejected: commit is not based on the latest version. Please pull the latest changes first.");
+			return false;
+		}
+	}
+
+	// 检查提交的commit是不是最新的版本 - 验证通过，更新HEAD
+	if (!new_remote_head.empty()) {
+		try {
+			ofstream head_file(remote_head_path);
+			if (head_file.is_open()) {
+				head_file << new_remote_head;
+				head_file.close();
+			}
+		}
+		catch (const exception& e) {
+			sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to update remote HEAD");
+			return false;
+		}
+	}
+
 	auto response = ProtocolMessage::createStringMessage(MessageType::PUSH_RESPONSE, "Push completed");
 	return NetworkUtils::sendMessage(client_socket, response);
 }
 
-// 拉取请求处理
+// 推送检查请求处理
+bool Server::handlePushCheckRequest(int client_socket, shared_ptr<ClientSession> session,
+	const ProtocolMessage& msg) {
+	if (!session->authenticated) {
+		sendErrorResponse(client_socket, StatusCode::AUTH_REQUIRED, "Authentication required");
+		return false;
+	}
+
+	if (session->current_repo.empty()) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "No repository selected");
+		return false;
+	}
+
+	// 解析客户端的检查请求数据
+	if (msg.payload.size() < sizeof(PushCheckRequestPayload)) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Invalid push check request");
+		return false;
+	}
+
+	PushCheckRequestPayload check_payload;
+	memcpy(&check_payload, msg.payload.data(), sizeof(PushCheckRequestPayload));
+
+	// 检查数据完整性
+	size_t required_size = sizeof(PushCheckRequestPayload) + 
+						check_payload.local_head_length + 
+						check_payload.new_commit_id_length + 
+						check_payload.commit_parent_length;
+	if (msg.payload.size() < required_size) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Incomplete push check request data");
+		return false;
+	}
+
+	// 解析各个字段
+	size_t offset = sizeof(PushCheckRequestPayload);
+	
+	string local_head;
+	if (check_payload.local_head_length > 0) {
+		local_head = string(reinterpret_cast<const char*>(msg.payload.data() + offset), check_payload.local_head_length);
+	}
+	offset += check_payload.local_head_length;
+
+	string new_commit_id;
+	if (check_payload.new_commit_id_length > 0) {
+		new_commit_id = string(reinterpret_cast<const char*>(msg.payload.data() + offset), check_payload.new_commit_id_length);
+	}
+	offset += check_payload.new_commit_id_length;
+
+	string commit_parent;
+	if (check_payload.commit_parent_length > 0) {
+		commit_parent = string(reinterpret_cast<const char*>(msg.payload.data() + offset), check_payload.commit_parent_length);
+	}
+
+	// 获取远程仓库的HEAD
+	fs::path repo_path = impl_->repo_manager->getRepositoryPath(session->current_repo);
+	string remote_head;
+	bool needs_update = true;
+
+	fs::path remote_head_path = repo_path / MARKNAME / "HEAD";
+	if (fs::exists(remote_head_path)) {
+		try {
+			ifstream head_file(remote_head_path);
+			if (head_file.is_open()) {
+				getline(head_file, remote_head);
+				head_file.close();
+				// 移除尾部的换行符
+				while (!remote_head.empty() && (remote_head.back() == '\n' || remote_head.back() == '\r')) {
+					remote_head.pop_back();
+				}
+			}
+		}
+		catch (const exception& e) {
+			// 如果读取失败，视为空仓库
+			remote_head.clear();
+		}
+	}
+
+	// 检查是否需要更新
+	if (!remote_head.empty() && remote_head == local_head) {
+		needs_update = false;
+	}
+
+	// 如果需要更新，在这里验证客户端的提交是否是最新的
+	if (needs_update && !new_commit_id.empty()) {
+		if (!validatePushCommitIsLatest(session->current_repo, commit_parent, remote_head)) {
+			sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, 
+				"Push rejected: commit is not based on the latest version. Please pull the latest changes first.");
+			return false;
+		}
+	}
+
+	// 发送检查响应
+	auto response = ProtocolMessage::createPushCheckResponse(remote_head, needs_update);
+	return NetworkUtils::sendMessage(client_socket, response);
+}
+
+// 推送提交数据处理
+bool Server::handlePushCommitData(int client_socket, shared_ptr<ClientSession> session, const ProtocolMessage& msg) {
+	if (!session->authenticated) {
+		sendErrorResponse(client_socket, StatusCode::AUTH_REQUIRED, "Authentication required");
+		return false;
+	}
+
+	if (session->current_repo.empty()) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "No repository selected");
+		return false;
+	}
+
+	// 解析commit数据
+	if (msg.payload.size() < sizeof(PushCommitDataPayload)) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Invalid commit data");
+		return false;
+	}
+
+	PushCommitDataPayload commit_payload;
+	memcpy(&commit_payload, msg.payload.data(), sizeof(PushCommitDataPayload));
+
+	if (msg.payload.size() < sizeof(PushCommitDataPayload) + commit_payload.commit_id_length + commit_payload.commit_data_length) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Incomplete commit data");
+		return false;
+	}
+
+	// 提取commit ID
+	string commit_id(reinterpret_cast<const char*>(msg.payload.data() + sizeof(PushCommitDataPayload)),
+		commit_payload.commit_id_length);
+
+	// 提取commit数据
+	vector<uint8_t> commit_data(msg.payload.begin() + sizeof(PushCommitDataPayload) + commit_payload.commit_id_length,
+		msg.payload.begin() + sizeof(PushCommitDataPayload) + commit_payload.commit_id_length + commit_payload.commit_data_length);
+
+	// 将commit保存到远程仓库
+	fs::path repo_path = impl_->repo_manager->getRepositoryPath(session->current_repo);
+	fs::path objects_dir = repo_path / MARKNAME / "objects";
+	fs::create_directories(objects_dir);
+
+	fs::path commit_file = objects_dir / commit_id;
+	try {
+		ofstream outfile(commit_file, ios::binary);
+		if (!outfile.is_open()) {
+			sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to create commit file");
+			return false;
+		}
+		outfile.write(reinterpret_cast<const char*>(commit_data.data()), commit_data.size());
+		outfile.close();
+	}
+	catch (const exception& e) {
+		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to write commit data");
+		return false;
+	}
+
+	return true; // 不发送响应，等待更多数据或最终的PUSH_REQUEST
+}
+
+// 推送对象数据处理
+bool Server::handlePushObjectData(int client_socket, shared_ptr<ClientSession> session, const ProtocolMessage& msg) {
+	if (!session->authenticated) {
+		sendErrorResponse(client_socket, StatusCode::AUTH_REQUIRED, "Authentication required");
+		return false;
+	}
+
+	if (session->current_repo.empty()) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "No repository selected");
+		return false;
+	}
+
+	// 解析对象数据
+	if (msg.payload.size() < sizeof(PushObjectDataPayload)) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Invalid object data");
+		return false;
+	}
+
+	PushObjectDataPayload object_payload;
+	memcpy(&object_payload, msg.payload.data(), sizeof(PushObjectDataPayload));
+
+	if (msg.payload.size() < sizeof(PushObjectDataPayload) + object_payload.object_id_length + object_payload.object_data_length) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Incomplete object data");
+		return false;
+	}
+
+	// 提取对象ID
+	string object_id(reinterpret_cast<const char*>(msg.payload.data() + sizeof(PushObjectDataPayload)),
+		object_payload.object_id_length);
+
+	// 提取对象数据
+	vector<uint8_t> object_data(msg.payload.begin() + sizeof(PushObjectDataPayload) + object_payload.object_id_length,
+		msg.payload.begin() + sizeof(PushObjectDataPayload) + object_payload.object_id_length + object_payload.object_data_length);
+
+	// 验证数据校验和
+	uint32_t calculated_checksum = ProtocolMessage::calculateCRC32(object_data);
+	if (calculated_checksum != object_payload.checksum) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Object data checksum mismatch");
+		return false;
+	}
+
+	// 将对象保存到远程仓库
+	fs::path repo_path = impl_->repo_manager->getRepositoryPath(session->current_repo);
+	fs::path objects_dir = repo_path / MARKNAME / "objects";
+	fs::create_directories(objects_dir);
+
+	fs::path object_file = objects_dir / object_id;
+	// 如果对象已存在，跳过
+	if (fs::exists(object_file)) {
+		return true;
+	}
+
+	try {
+		ofstream outfile(object_file, ios::binary);
+		if (!outfile.is_open()) {
+			sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to create object file");
+			return false;
+		}
+		outfile.write(reinterpret_cast<const char*>(object_data.data()), object_data.size());
+		outfile.close();
+	}
+	catch (const exception& e) {
+		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to write object data");
+		return false;
+	}
+
+	return true; // 不发送响应，等待更多数据或最终的PUSH_REQUEST
+}
 bool Server::handlePullRequest(int client_socket, shared_ptr<ClientSession> session, const ProtocolMessage& msg) {
 	if (!session->authenticated) {
 		sendErrorResponse(client_socket, StatusCode::AUTH_REQUIRED, "Authentication required");
@@ -686,8 +1039,130 @@ bool Server::handlePullRequest(int client_socket, shared_ptr<ClientSession> sess
 		return false;
 	}
 
-	// TODO: 实现拉取逻辑
+	// 发送拉取完成响应即可，因为实际数据传输在PULL_CHECK阶段完成
 	auto response = ProtocolMessage::createStringMessage(MessageType::PULL_RESPONSE, "Pull completed");
+	return NetworkUtils::sendMessage(client_socket, response);
+}
+
+// 拉取检查请求处理
+bool Server::handlePullCheckRequest(int client_socket, shared_ptr<ClientSession> session, const ProtocolMessage& msg) {
+	if (!session->authenticated) {
+		sendErrorResponse(client_socket, StatusCode::AUTH_REQUIRED, "Authentication required");
+		return false;
+	}
+
+	if (session->current_repo.empty()) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "No repository selected");
+		return false;
+	}
+
+	// 解析客户端的HEAD
+	if (msg.payload.size() < sizeof(PullCheckRequestPayload)) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Invalid pull check request");
+		return false;
+	}
+
+	PullCheckRequestPayload check_payload;
+	memcpy(&check_payload, msg.payload.data(), sizeof(PullCheckRequestPayload));
+
+	string local_head;
+	if (check_payload.local_head_length > 0) {
+		if (msg.payload.size() < sizeof(PullCheckRequestPayload) + check_payload.local_head_length) {
+			sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Invalid local head data");
+			return false;
+		}
+		local_head = string(reinterpret_cast<const char*>(msg.payload.data() + sizeof(PullCheckRequestPayload)),
+			check_payload.local_head_length);
+	}
+
+	// 获取远程仓库的HEAD
+	fs::path repo_path = impl_->repo_manager->getRepositoryPath(session->current_repo);
+	string remote_head;
+	try {
+		fs::path remote_head_path = repo_path / MARKNAME / "HEAD";
+		if (fs::exists(remote_head_path)) {
+			ifstream head_file(remote_head_path);
+			if (head_file.is_open()) {
+				getline(head_file, remote_head);
+				head_file.close();
+			}
+		}
+	}
+	catch (const exception& e) {
+		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to read remote HEAD");
+		return false;
+	}
+
+	// 判断是否需要更新
+	bool has_updates = false;
+	uint32_t commits_count = 0;
+
+	if (remote_head != local_head) {
+		has_updates = true;
+		// 计算需要发送的提交数量
+		// 简化处理：如果不同就发送整个历史
+		commits_count = 1; // 简化为只发送一个提交
+
+		if (!remote_head.empty()) {
+			// 发送检查响应
+			auto check_response = ProtocolMessage::createPullCheckResponse(remote_head, has_updates, commits_count);
+			if (!NetworkUtils::sendMessage(client_socket, check_response)) {
+				return false;
+			}
+
+			// 发送commit数据
+			fs::path commit_obj_path = repo_path / MARKNAME / "objects" / remote_head;
+			if (fs::exists(commit_obj_path)) {
+				// 读取commit数据
+				ifstream commit_file(commit_obj_path, ios::binary);
+				if (commit_file.is_open()) {
+					vector<uint8_t> commit_data((istreambuf_iterator<char>(commit_file)), {});
+					commit_file.close();
+
+					// 发送commit数据
+					auto commit_msg = ProtocolMessage::createPullCommitData(remote_head, commit_data);
+					if (!NetworkUtils::sendMessage(client_socket, commit_msg)) {
+						return false;
+					}
+
+					// 发送该commit的所有对象
+					// 简化处理：解析commit数据获取tree信息
+					try {
+						string commit_content = string(commit_data.begin(), commit_data.end());
+						Commit commit = CommitManager::deserializeCommit(remote_head + "\n" + commit_content);
+
+						// 发送所有tree中的对象
+						for (const auto& tree_item : commit.tree) {
+							const string& object_id = tree_item.second;
+							fs::path obj_path = repo_path / MARKNAME / "objects" / object_id;
+							if (fs::exists(obj_path)) {
+								ifstream obj_file(obj_path, ios::binary);
+								if (obj_file.is_open()) {
+									vector<uint8_t> obj_data((istreambuf_iterator<char>(obj_file)), {});
+									obj_file.close();
+
+									auto obj_msg = ProtocolMessage::createPullObjectData(object_id, obj_data);
+									if (!NetworkUtils::sendMessage(client_socket, obj_msg)) {
+										return false;
+									}
+								}
+							}
+						}
+					}
+					catch (const exception& e) {
+						// 如果解析commit失败，继续处理
+					}
+
+					// 发送拉取完成响应
+					auto pull_response = ProtocolMessage::createStringMessage(MessageType::PULL_RESPONSE, "Pull completed");
+					return NetworkUtils::sendMessage(client_socket, pull_response);
+				}
+			}
+		}
+	}
+
+	// 无需更新
+	auto response = ProtocolMessage::createPullCheckResponse(remote_head, has_updates, commits_count);
 	return NetworkUtils::sendMessage(client_socket, response);
 }
 
@@ -763,7 +1238,9 @@ bool Server::handleCloneRequest(int client_socket, shared_ptr<ClientSession> ses
 // 心跳处理
 bool Server::handleHeartbeat(int client_socket, shared_ptr<ClientSession> session) {
 	auto response = ProtocolMessage(MessageType::HEARTBEAT);
-	return NetworkUtils::sendMessage(client_socket, response);
+
+
+	return 1;
 }
 
 // ServerCommand实现

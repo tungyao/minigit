@@ -45,12 +45,14 @@ private:
     // 文件状态检测辅助方法
     struct FileStatus {
         string path;
-        string status; // "M"修改, "A"新增, "D"删除, "??"未跟踪
+        string status; // "M"修改, "A"新增, "D"删除, "??"未跟踪, "R"重命名
         string staged_hash;  // 暂存区中的哈希
         string working_hash; // 工作目录中的哈希
+        string old_path;     // 重命名前的路径（仅在status="R"时有效）
     };
     
     static vector<FileStatus> getWorkingDirectoryStatus();
     static string calculateWorkingFileHash(const fs::path& file_path);
     static void scanWorkingDirectory(const fs::path& dir, vector<string>& files);
+    static void detectRenames(vector<FileStatus>& statuses);
 };

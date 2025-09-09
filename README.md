@@ -24,9 +24,41 @@ src/
 
 - 单文件实现，无外部依赖
 - 支持基本的Git操作：init、add、commit、push、pull、reset、log、status、diff
+- **智能add操作**：自动检测修改、新增、删除和重命名的文件
 - 跨平台兼容（Windows、Linux、macOS）
 - 使用SHA-1哈希算法（高性能优化）
 - 简单的文件系统存储
+
+### 智能Add操作功能
+
+新增的智能add操作能够自动检测和处理各种文件状态变化：
+
+#### 支持的文件状态：
+- **`M` 修改的文件**：检测文件与HEAD提交的差异，只添加真正有变化的文件
+- **`??` 新增的文件**：检测并添加未跟踪的新文件
+- **`D` 删除的文件**：检测并处理已删除的文件，从暂存区移除
+- **`R` 重命名的文件**：通过内容哈希对比自动检测文件重命名操作
+
+#### 功能特点：
+- **智能过滤**：自动跳过未修改的文件，提高效率
+- **重命名检测**：通过SHA-1哈希对比检测文件重命名
+- **批量处理**：支持目录递归扫描，一次性处理所有变化
+- **状态反馈**：提供详细的操作反馈信息
+
+```bash
+# 智能add示例
+./minigit add file1.txt          # 只处理修改过的文件
+./minigit add .                  # 递归处理所有变化（推荐）
+./minigit add src/              # 处理指定目录下的变化
+
+# 示例输出：
+# add file1.txt (modified)
+# rename old_file.txt -> new_file.txt
+# add new_file.txt (new)
+# remove deleted_file.txt (deleted)
+# skip unchanged_file.txt (unchanged)
+# Processed 4 file change(s) in staging area.
+```
 
 ### 性能优化
 
@@ -71,6 +103,7 @@ log命令支持查看提交历史：
   - `M` - 已修改的文件
   - `D` - 已删除的文件
   - `??` - 未跟踪的新文件
+  - `R` - 重命名的文件
 
 #### Diff命令：
 - **默认模式**：显示工作目录与暂存区的差异
@@ -166,8 +199,9 @@ cmake --build . --config Release
 # 初始化仓库
 ./minigit init
 
-# 添加文件到暂存区
+# 智能add：只添加修改、新增、删除和重命名的文件
 ./minigit add <file-or-dir>
+./minigit add .                  # 推荐：批量处理所有变化
 
 # 提交更改
 ./minigit commit -m "提交信息"
@@ -200,10 +234,10 @@ cmake --build . --config Release
 ## 限制
 
 - 不支持分支和合并
-- 不支持文件重命名
 - 远程仓库必须是本地文件夹路径
 - 不支持并发操作
 - 简化的JSON格式（无转义）
+- 重命名检测基于内容哈希，可能出现误判
 
 ## 仓库结构
 

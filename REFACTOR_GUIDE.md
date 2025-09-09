@@ -1,13 +1,9 @@
 # MiniGit 项目结构重构
 
-## 概述
-
-本次重构将原本的单文件实现 `mini_git_c_17_single_file_add_commit_push_pull.cpp` 按功能模块拆分为多个文件，提高代码的可维护性和可扩展性。
 
 ## 新的项目结构
 
 ```
-d:\test\gg\
 ├── src/                           # 源代码目录
 │   ├── common.h                   # 公共头文件（包含标准库）
 │   ├── sha256.h/.cpp             # SHA-256哈希计算模块
@@ -22,8 +18,6 @@ d:\test\gg\
 ├── README.md                     # 项目文档
 └── 其他测试和构建脚本...
 
-# 保留的原始文件
-├── mini_git_c_17_single_file_add_commit_push_pull.cpp  # 原始单文件版本
 ```
 
 ## 模块详细说明
