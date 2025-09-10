@@ -60,7 +60,7 @@ public:
     bool clone(const string& repo_name);
     
     // 日志操作
-    vector<string> log(int max_count = -1, bool oneline = false);
+    vector<string> log(int max_count = -1, bool line = false);
     
     // 交互式命令行
     int runInteractive();

@@ -1265,7 +1265,7 @@ bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> sessi
 		memcpy(&log_payload, msg.payload.data(), sizeof(LogRequestPayload));
 
 		int max_count = static_cast<int>(log_payload.max_count);
-		bool oneline = log_payload.oneline != 0;
+		bool line = log_payload.line != 0;
 
 		// 切换到仓库目录
 		fs::path repo_path = fs::path(config_.root_path) / session->current_repo;

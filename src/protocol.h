@@ -59,7 +59,7 @@ enum class MessageType : uint8_t {
 
 	// 控制消息
 	HEARTBEAT = 0x60,           // 心跳
-	ERROR_MSG = 0xFF            // 错误消息
+	ERROR_MSG = 0xFF,            // 错误消息
 };
 
 // 状态码定义
@@ -74,7 +74,7 @@ enum class StatusCode : uint8_t {
 	INVALID_REQUEST = 0x07,     // 无效请求
 	SERVER_ERROR = 0x08,        // 服务器错误
 	PROTOCOL_ERROR = 0x09,      // 协议错误
-	CONNECTION_LOST = 0x0A      // 连接丢失
+	CONNECTION_LOST = 0x0A,      // 连接丢失
 };
 
 // 消息头结构（固定16字节）
@@ -247,7 +247,7 @@ struct PullObjectDataPayload {
 #pragma pack(push, 1)
 struct LogRequestPayload {
 	uint32_t max_count;      // 最大提交数量 (-1表示不限制)
-	uint8_t oneline;         // 是否单行格式 (1=是，0=否)
+	uint8_t line;         // 是否单行格式 (1=是，0=否)
 	// 可以扩展其他参数
 };
 #pragma pack(pop)
@@ -319,7 +319,7 @@ public:
 	static ProtocolMessage createPullObjectData(const string& object_id, const vector<uint8_t>& object_data);
 	
 	// 新增：日志相关消息
-	static ProtocolMessage createLogRequest(int max_count, bool oneline);
+	static ProtocolMessage createLogRequest(int max_count, bool line);
 	static ProtocolMessage createLogResponse(const vector<pair<string, string>>& commits);
 
 	// 工具方法

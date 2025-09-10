@@ -8,6 +8,8 @@
 #include <sstream>
 #include "filesystem_utils.h"
 
+#include "utils.h"
+
 // 网络操作重试宏
 #define NETWORK_OPERATION_WITH_RETRY(operation, max_retries) \
     do { \
@@ -185,7 +187,7 @@ bool Client::login() {
 		connected_ = false;
 		return false;
 	}
-
+	cout << "Debug: Received message type: " << static_cast<int>(response.header.type) << endl;
 	if (response.header.type == MessageType::LOGIN_RESPONSE) {
 		cout << "Login successful\n";
 		return true;
@@ -249,14 +251,14 @@ vector<string> Client::listRepositories() {
 }
 
 // 日志查询
-vector<string> Client::log(int max_count, bool oneline) {
+vector<string> Client::log(int max_count, bool line) {
 	vector<string> log_entries;
-	
+
 	if (!authenticated_) {
 		cerr << "Not authenticated\n";
 		return log_entries;
 	}
-	
+
 	if (current_repo_.empty()) {
 		cerr << "No repository selected. Use 'use <repo>' command first.\n";
 		return log_entries;
@@ -267,7 +269,7 @@ vector<string> Client::log(int max_count, bool oneline) {
 		return log_entries;
 	}
 
-	auto request = ProtocolMessage::createLogRequest(max_count, oneline);
+	auto request = ProtocolMessage::createLogRequest(max_count, line);
 	if (!NetworkUtils::sendMessage(client_socket_, request)) {
 		cerr << "Failed to send log request\n";
 		return log_entries;
@@ -297,25 +299,26 @@ vector<string> Client::log(int max_count, bool oneline) {
 					uint32_t commit_id_length;
 					memcpy(&commit_id_length, response.payload.data() + offset, sizeof(uint32_t));
 					offset += sizeof(uint32_t);
-					
+
 					if (offset + commit_id_length <= response.payload.size()) {
 						string commit_id(reinterpret_cast<const char*>(response.payload.data() + offset), commit_id_length);
 						offset += commit_id_length;
-						
+
 						// 读取message
 						if (offset + sizeof(uint32_t) <= response.payload.size()) {
 							uint32_t message_length;
 							memcpy(&message_length, response.payload.data() + offset, sizeof(uint32_t));
 							offset += sizeof(uint32_t);
-							
+
 							if (offset + message_length <= response.payload.size()) {
 								string message(reinterpret_cast<const char*>(response.payload.data() + offset), message_length);
 								offset += message_length;
-								
+
 								// 格式化输出
-								if (oneline) {
+								if (line) {
 									log_entries.push_back(commit_id.substr(0, 12) + " " + message);
-								} else {
+								}
+								else {
 									log_entries.push_back("commit " + commit_id);
 									log_entries.push_back("    " + message);
 									log_entries.push_back(""); // 空行分隔
@@ -473,7 +476,7 @@ bool Client::push() {
 	// 这里我们做一个简化的检查：只检查最新的commit
 	string new_commit_id = local_head;
 	string commit_parent;
-	
+
 	// 获取当前本地最新commit的父节点
 	if (!local_head.empty()) {
 		auto commit_opt = CommitManager::loadCommit(local_head);
@@ -616,7 +619,7 @@ bool Client::pull() {
 	try {
 		local_head = FileSystemUtils::readText(FileSystemUtils::headPath());
 	}
-	catch (const exception& e) {
+	catch (exception& e) {
 		// 本地可能没有提交，这是正常的
 		local_head = "";
 	}
@@ -875,34 +878,36 @@ void Client::cleanupNetwork() {
 
 // 创建连接
 bool Client::createConnection() {
-#ifdef _WIN32
-	client_socket_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (client_socket_ == INVALID_SOCKET) {
-		return false;
-	}
-#else
-	client_socket_ = socket(AF_INET, SOCK_STREAM, 0);
-	if (client_socket_ < 0) {
-		return false;
-	}
-#endif
+	struct addrinfo hints, * res;
+	int status;
 
-	// 解析主机名
-	struct hostent* host_entry = gethostbyname(config_.server_host.c_str());
-	if (!host_entry) {
+	// 设置 addrinfo hints
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET; // 使用 IPv4
+	hints.ai_socktype = SOCK_STREAM;
+
+	// 获取服务器地址信息
+	status = getaddrinfo(config_.server_host.c_str(), std::to_string(config_.server_port).c_str(), &hints, &res);
+	if (status != 0) {
+		std::cerr << "getaddrinfo failed: " << gai_strerror(status) << std::endl;
+		return false;
+	}
+
+	// 创建套接字
+	client_socket_ = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	if (client_socket_ == -1) {
+		freeaddrinfo(res);
 		return false;
 	}
 
 	// 连接到服务器
-	struct sockaddr_in server_addr;
-	memset(&server_addr, 0, sizeof(server_addr));
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(config_.server_port);
-	memcpy(&server_addr.sin_addr, host_entry->h_addr_list[0], host_entry->h_length);
-
-	if (::connect(client_socket_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+	if (::connect(client_socket_, res->ai_addr, res->ai_addrlen) < 0) {
+		freeaddrinfo(res);
 		return false;
 	}
+
+	// 释放 addrinfo 资源
+	freeaddrinfo(res);
 
 	// 设置超时
 	NetworkUtils::setSocketTimeout(client_socket_, 30);
@@ -1068,11 +1073,11 @@ bool Client::processInteractiveCommand(const string& command, const vector<strin
 	else if (command == "log") {
 		// 解析参数
 		int max_count = -1;
-		bool oneline = false;
-		
+		bool line = false;
+
 		for (size_t i = 0; i < args.size(); ++i) {
-			if (args[i] == "--oneline") {
-				oneline = true;
+			if (args[i] == "--line") {
+				line = true;
 			}
 			else if (args[i] == "-n" && i + 1 < args.size()) {
 				try {
@@ -1085,8 +1090,8 @@ bool Client::processInteractiveCommand(const string& command, const vector<strin
 				}
 			}
 		}
-		
-		auto log_entries = log(max_count, oneline);
+
+		auto log_entries = log(max_count, line);
 		for (const string& entry : log_entries) {
 			cout << entry << "\n";
 		}
@@ -1109,7 +1114,7 @@ void Client::printHelp() {
 	cout << "  push                 - Push to current repository\n";
 	cout << "  pull                 - Pull from current repository\n";
 	cout << "  clone <repo>         - Clone a repository\n";
-	cout << "  log [--oneline] [-n <count>] - Show commit log\n";
+	cout << "  log [--line] [-n <count>] - Show commit log\n";
 	cout << "  status               - Show connection status\n";
 	cout << "  quit, exit           - Disconnect and exit\n";
 }

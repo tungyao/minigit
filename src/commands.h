@@ -41,7 +41,8 @@ private:
     static NetworkRemote parseNetworkRemote(const string& remote_url);
     static int networkPush(const NetworkRemote& remote, const string& password);
     static int networkPull(const NetworkRemote& remote, const string& password);
-    
+    static int networkLog(const NetworkRemote& remote, const string& password, int max_count, bool line);
+
     // 文件状态检测辅助方法
     struct FileStatus {
         string path;

@@ -26,3 +26,4 @@ Thumbs.db
 
 # Test directories
 test_*/
+test/

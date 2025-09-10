@@ -396,10 +396,10 @@ ProtocolMessage ProtocolMessage::createPullObjectData(const string& object_id, c
 }
 
 // 创建日志请求消息
-ProtocolMessage ProtocolMessage::createLogRequest(int max_count, bool oneline) {
+ProtocolMessage ProtocolMessage::createLogRequest(int max_count, bool line) {
 	LogRequestPayload payload;
 	payload.max_count = static_cast<uint32_t>(max_count);
-	payload.oneline = oneline ? 1 : 0;
+	payload.line = line ? 1 : 0;
 
 	vector<uint8_t> data(sizeof(LogRequestPayload));
 	memcpy(data.data(), &payload, sizeof(LogRequestPayload));
@@ -415,17 +415,17 @@ ProtocolMessage ProtocolMessage::createLogResponse(const vector<pair<string, str
 		total_size += sizeof(uint32_t) + commit.first.size();  // commit_id_length + commit_id
 		total_size += sizeof(uint32_t) + commit.second.size(); // message_length + message
 	}
-	
+
 	vector<uint8_t> data;
 	data.reserve(total_size);
-	
+
 	// 写入响应头
 	LogResponsePayload payload;
 	payload.commits_count = static_cast<uint32_t>(commits.size());
-	
+
 	data.resize(sizeof(LogResponsePayload));
 	memcpy(data.data(), &payload, sizeof(LogResponsePayload));
-	
+
 	// 写入每个提交的数据
 	for (const auto& commit : commits) {
 		// 写入commit_id_length和commit_id
@@ -434,7 +434,7 @@ ProtocolMessage ProtocolMessage::createLogResponse(const vector<pair<string, str
 		data.resize(old_size + sizeof(uint32_t) + commit.first.size());
 		memcpy(data.data() + old_size, &commit_id_length, sizeof(uint32_t));
 		memcpy(data.data() + old_size + sizeof(uint32_t), commit.first.c_str(), commit.first.size());
-		
+
 		// 写入message_length和message
 		uint32_t message_length = static_cast<uint32_t>(commit.second.size());
 		old_size = data.size();
