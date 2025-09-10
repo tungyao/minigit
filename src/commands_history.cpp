@@ -1,5 +1,6 @@
 #include "commands_history.h"
 #include "sha256.h"
+#include <commands_remote.h>
 
 int CommandsHistory::reset(vector<string> args)
 {
@@ -142,12 +143,22 @@ int CommandsHistory::log(vector<string> args)
 	// 解析参数
 	int max_count = -1; // -1表示显示所有提交
 	bool line = false;
-
+	bool is_remote = false;
+	string password;
 	for (size_t i = 0; i < args.size(); ++i)
 	{
 		if (args[i] == "--line")
 		{
 			line = true;
+		}
+		else if (args[i] == "--remote")
+		{
+			is_remote = true;
+		}
+		else if (args[i] == "--password" && i + 1 < args.size())
+		{
+			password = args[i + 1];
+			i++;
 		}
 		else if (args[i].substr(0, 2) == "-n" && i + 1 < args.size())
 		{
@@ -176,6 +187,28 @@ int CommandsHistory::log(vector<string> args)
 		}
 	}
 
+	string remote = CommandsRemote::getRemote();
+	if (remote.empty())
+	{
+		cerr << "No remote configured. Use: minigit set-remote <folder>\n";
+		return 1;
+	}
+	if (is_remote && password.empty())
+	{
+		cerr << "Remote log requires --password option\n";
+		cerr << "Usage: minigit log --remote --password <password>\n";
+		return 1;
+	}
+	CommandsRemote::NetworkRemote network_remote = CommandsRemote::parseNetworkRemote(remote);
+	if (network_remote.host.empty())
+	{
+		cerr << "Invalid network remote format: " << remote << "\n";
+		return 1;
+	}
+	if (is_remote)
+	{
+		return CommandsRemote::networkLog(network_remote, password, max_count, line);
+	}
 	// 获取当前HEAD
 	string current_id = FileSystemUtils::readText(FileSystemUtils::headPath());
 	if (current_id.empty())

@@ -332,6 +332,10 @@ int CommandsRemote::networkLog(const NetworkRemote& remote, const string& passwo
 
 	// 执行 log
 	auto logs = client.log(max_count, line);
+	if (logs.size() == 0) {
+		cout << "no commits" << endl;
+	}
+
 	for (const auto& log_entry : logs)
 	{
 		cout << log_entry << "\n";
