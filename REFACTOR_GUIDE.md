@@ -1,4 +1,124 @@
-# MiniGit 项目结构重构
+## v2.1 重要更新（2025-09-10）🎉
+
+### 1. 修复了 `add .` 命令无法检测删除文件的核心问题
+
+#### 问题描述：
+- `add .` 命令无法检测和暂存删除的文件
+- 路径处理中存在跨平台兼容性问题
+- 目录扫描时缺少已删除文件的包含逻辑
+
+#### 解决方案：
+```cpp
+// 修复前：错误的路径处理
+string rel_path = fs::relative(p, FileSystemUtils::repoRoot()).string();
+
+// 修复后：跨平台兼容的路径处理
+string rel_path = fs::relative(abs_p, FileSystemUtils::repoRoot()).generic_string();
+
+// 增强的目录扫描逻辑：明确包含已删除文件
+set<string> files_to_process(dir_files.begin(), dir_files.end());
+for (const string& deleted_file : deleted_files) {
+    if (dir_relative == "." || deleted_file.find(dir_relative + "/") == 0) {
+        files_to_process.insert(deleted_file);
+    }
+}
+```
+
+### 2. 修复了 `reset --hard` 不能正确恢复删除文件的问题
+
+#### 问题描述：
+- `reset --hard` 在更新暂存区后才检测工作目录状态，导致状态检测错误
+- 无法正确恢复在目标提交中存在但在工作目录中被删除的文件
+
+#### 解决方案：
+```cpp
+// 修复前：错误的执行顺序
+auto working_status = getWorkingDirectoryStatus(); // 在更新暂存区后调用
+
+// 修复后：正确的执行顺序
+vector<string> current_working_files;
+scanWorkingDirectory(FileSystemUtils::repoRoot(), current_working_files);
+// 收集当前暂存区和HEAD中跟踪的文件（在更新之前）
+set<string> tracked_files;
+for (const auto& kv : current_index) {
+    tracked_files.insert(kv.first);
+}
+```
+
+### 3. 修复了暂存区管理问题
+
+#### 问题描述：
+- 提交后暂存区被错误地清空，导致后续操作出现问题
+
+#### 解决方案：
+```cpp
+// 修复前：错误地清空暂存区
+Index::IndexMap empty_index;
+Index::write(empty_index);
+
+// 修复后：保持暂存区与HEAD一致
+// 正确的做法：提交后暂存区应该与新的HEAD提交内容一致
+// 而不是清空暂存区
+// 暂存区已经包含了正确的文件，不需要清空
+```
+
+### 4. 增强了 `log` 命令显示删除文件
+
+#### 新增功能：
+- 完整的文件变更显示（新增、修改、删除）
+- 变更统计信息
+- 符号化的变更类型标识
+
+#### 实现细节：
+```cpp
+// 新增的 showCommitChanges 方法
+void Commands::showCommitChanges(const Commit& commit) {
+    // 获取父提交的文件列表
+    Index::IndexMap parent_files;
+    if (!commit.parent.empty()) {
+        auto parent_commit = CommitManager::loadCommit(commit.parent);
+        if (parent_commit) {
+            parent_files = parent_commit->tree;
+        }
+    }
+    
+    // 分类文件变更
+    vector<pair<string, string>> added_files;   // 新增
+    vector<pair<string, string>> modified_files; // 修改
+    vector<string> deleted_files;               // 删除
+    
+    // 比较当前提交和父提交的差异...
+}
+```
+
+### 5. 新增了历史文件追踪功能
+
+#### 功能特点：
+- **HD状态**：检测在历史提交中存在但现在完全不存在的文件
+- **智能检测**：能够检测可能被意外删除的历史文件
+- **防循环保护**：遍历历史提交时添加了防循环机制
+
+#### 实现细节：
+```cpp
+// 历史文件追踪实现
+Index::IndexMap Commands::getHistoricalFiles(const string& head_commit_id) {
+    Index::IndexMap historical_files;
+    string current_commit_id = head_commit_id;
+    set<string> visited_commits; // 防止无限循环
+    
+    while (!current_commit_id.empty() && 
+           visited_commits.find(current_commit_id) == visited_commits.end()) {
+        visited_commits.insert(current_commit_id);
+        // 遍历提交历史，收集所有曾经存在的文件
+        // ...
+    }
+    return historical_files;
+}
+```
+
+---
+
+## 项目结构重构历史
 
 
 ## 新的项目结构
@@ -128,14 +248,29 @@ cmake --build . -j$(nproc)
 所有原有功能均通过测试：
 - ✅ init, add, commit, status, checkout
 - ✅ push, pull, set-remote
-- ✅ reset (--soft, --mixed, --hard)
-- ✅ **log (显示提交历史)** ✨ 新功能
+- ✅ reset (--soft, --mixed, --hard) **✨ 今日修复 --hard 模式**
+- ✅ **log (显示提交历史)** ✨ **今日增强 - 完整显示删除文件**
   - 支持详细和单行显示模式
   - 支持限制显示数量
-- ✅ **diff/status 增强 (文件修改检测)** ✨ 新功能
+  - **新增：完整的文件变更显示（+/-/~）**
+  - **新增：变更统计信息**
+- ✅ **diff/status 增强 (文件修改检测)** ✨ **今日增强 - 历史文件追踪**
   - 检测工作目录中的文件变化
   - 支持修改、新增、删除状态检测
+  - **新增：HD状态（历史删除文件）**
   - 增强status命令显示工作目录状态
+- ✅ **智能 add 操作** ✨ **今日修复 - 删除文件检测**
+  - **修复：`add .` 现在能正确检测和暂存删除的文件**
+  - **修复：路径处理跨平台兼容性问题**
+  - **修复：目录扫描包含删除文件逻辑**
+
+### 今日测试结果（v2.1）：
+✅ **核心问题全部修复**：
+- `add .` 能正确检测并暂存删除的文件
+- `reset --hard` 能正确恢复被删除的文件
+- `log` 显示完整的文件变更信息（包括删除文件）
+- 新增历史文件追踪功能（HD状态）
+- 暂存区管理正确性修复
 
 生成的可执行文件大小：**167,936 字节**（多文件版本 vs 156,672 字节单文件版本）
 
@@ -169,13 +304,22 @@ cmake --build . -j$(nproc)
 
 ## 后续扩展建议
 
-基于新的模块化结构，可以考虑以下扩展：
+基于新的模块化结构和 v2.1 的更新，可以考虑以下扩展：
 
-1. **日志模块**：统一的日志记录和调试输出
-2. **配置模块**：更丰富的配置管理（不仅仅是remote）
-3. **差异模块**：实现文件diff功能
-4. **分支模块**：添加基本的分支支持
-5. **网络模块**：支持真正的远程仓库（TCP/SSH）
-6. **压缩模块**：对象存储压缩
-7. **验证模块**：数据完整性检查
-8. **性能模块**：大文件和大仓库优化
+### 短期优先级：
+1. **分支模块**：添加基本的分支支持（branch/checkout）
+2. **合并模块**：实现简单的三路合并
+3. **性能模块**：大文件和大仓库优化
+4. **网络模块**：支持真正的远程仓库（TCP/SSH）
+
+### 中期目标：
+5. **日志模块**：统一的日志记录和调试输出
+6. **配置模块**：更丰富的配置管理（不仅仅是remote）
+7. **差异模块**：实现文件diff功能
+8. **压缩模块**：对象存储压缩
+
+### 长期愿景：
+9. **验证模块**：数据完整性检查
+10. **单元测试模块**：全面的单元测试覆盖
+11. **文档生成器**：自动生成API文档
+12. **插件系统**：支持第三方扩展

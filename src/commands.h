@@ -55,4 +55,10 @@ private:
     static string calculateWorkingFileHash(const fs::path& file_path);
     static void scanWorkingDirectory(const fs::path& dir, vector<string>& files);
     static void detectRenames(vector<FileStatus>& statuses);
+    
+    // 历史文件追踪辅助方法
+    static Index::IndexMap getHistoricalFiles(const string& head_commit_id);
+    
+    // 提交变更显示辅助方法
+    static void showCommitChanges(const Commit& commit);
 };

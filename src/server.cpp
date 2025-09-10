@@ -16,12 +16,15 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
+#define INVALID_SOCKET_VALUE INVALID_SOCKET
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/select.h> 
+#define INVALID_SOCKET_VALUE -1
 #endif
 
 // 前向声明
@@ -269,7 +272,7 @@ int Server::run() {
 			NetworkUtils::setSocketTimeout(client_socket, 30);
 
 			// 创建新线程处理客户端
-			thread([this, client_socket]() {
+			std::thread([this, client_socket]() {
 				handleClient(client_socket);
 				}).detach();
 		}
@@ -286,13 +289,13 @@ int Server::run() {
 void Server::stop() {
 	running_ = false;
 
-	if (server_socket_ != INVALID_SOCKET) {
+	if (server_socket_ != INVALID_SOCKET_VALUE) {
 #ifdef _WIN32
 		closesocket(server_socket_);
 #else
 		close(server_socket_);
 #endif
-		server_socket_ = INVALID_SOCKET;
+		server_socket_ = INVALID_SOCKET_VALUE;
 	}
 }
 
@@ -317,7 +320,7 @@ void Server::cleanupNetwork() {
 bool Server::createServerSocket() {
 #ifdef _WIN32
 	server_socket_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (server_socket_ == INVALID_SOCKET) {
+	if (server_socket_ == INVALID_SOCKET_VALUE) {
 		return false;
 	}
 #else

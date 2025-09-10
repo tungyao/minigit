@@ -20,47 +20,78 @@ int Commands::add(vector<string> args) {
 		cerr << "Usage: minigit add <path> [...].\n";
 		return 1;
 	}
-	
+
 	auto idx = Index::read();
-	
+
 	// 获取工作目录状态，用于筛选修改过的文件
 	auto working_status = getWorkingDirectoryStatus();
 	set<string> modified_files;
 	set<string> untracked_files;
 	set<string> deleted_files;
 	map<string, string> renamed_files; // new_path -> old_path
-	
+
 	// 分类文件状态
 	for (const auto& file_status : working_status) {
 		if (file_status.status == "M") {
 			modified_files.insert(file_status.path);
-		} else if (file_status.status == "??") {
+		}
+		else if (file_status.status == "??") {
 			untracked_files.insert(file_status.path);
-		} else if (file_status.status == "D") {
+		}
+		else if (file_status.status == "D") {
 			deleted_files.insert(file_status.path);
-		} else if (file_status.status == "R") {
+		}
+		else if (file_status.status == "HD") {
+			// 历史删除的文件也视为删除文件处理
+			deleted_files.insert(file_status.path);
+		}
+		else if (file_status.status == "R") {
 			renamed_files[file_status.path] = file_status.old_path;
 		}
 	}
-	
+
 	int added_count = 0;
 	for (auto& a : args) {
 		fs::path p = a;
-		if (!fs::exists(p)) {
+		
+		// 将相对路径转换为绝对路径，然后再计算相对于仓库根目录的路径
+		fs::path abs_p = fs::absolute(p);
+		string rel_path = fs::relative(abs_p, FileSystemUtils::repoRoot()).generic_string();
+		
+		// 调试输出
+		// cout << "Debug: arg=" << a << ", abs_path=" << abs_p.string() << ", rel_path=" << rel_path << "\n";
+		
+		// 检查文件是否在删除文件列表中（即使物理文件不存在）
+		bool is_deleted_file = deleted_files.count(rel_path) > 0;
+		
+		if (!fs::exists(abs_p) && !is_deleted_file) {
 			cerr << "skip missing: " << a << "\n";
 			continue;
 		}
-		
+
 		// 如果是目录，遍历目录下的所有文件
-		if (fs::is_directory(p)) {
+		if (fs::is_directory(abs_p)) {
 			vector<string> dir_files;
-			scanWorkingDirectory(p, dir_files);
+			scanWorkingDirectory(abs_p, dir_files);
+
+			// 添加工作目录中扫描到的文件
+			set<string> files_to_process(dir_files.begin(), dir_files.end());
 			
-			for (const auto& file_path : dir_files) {
+			// 重要：还需要包含已删除的文件
+			// 检查删除的文件是否在当前处理的目录下
+			string dir_relative = fs::relative(abs_p, FileSystemUtils::repoRoot()).generic_string();
+			for (const string& deleted_file : deleted_files) {
+				// 如果删除的文件在当前目录下（或者处理根目录）
+				if (dir_relative == "." || deleted_file.find(dir_relative + "/") == 0) {
+					files_to_process.insert(deleted_file);
+				}
+			}
+
+			for (const auto& file_path : files_to_process) {
 				// 添加修改、新增、删除和重命名的文件
-				if (modified_files.count(file_path) || untracked_files.count(file_path) || 
-				    deleted_files.count(file_path) || renamed_files.count(file_path)) {
-					
+				if (modified_files.count(file_path) || untracked_files.count(file_path) ||
+					deleted_files.count(file_path) || renamed_files.count(file_path)) {
+
 					if (deleted_files.count(file_path)) {
 						// 处理删除的文件：从暂存区移除
 						auto it = idx.find(file_path);
@@ -69,7 +100,8 @@ int Commands::add(vector<string> args) {
 							added_count++;
 							cout << "remove " << file_path << " (deleted)\n";
 						}
-					} else if (renamed_files.count(file_path)) {
+					}
+					else if (renamed_files.count(file_path)) {
 						// 处理重命名的文件：移除旧文件，添加新文件
 						string old_path = renamed_files[file_path];
 						auto it = idx.find(old_path);
@@ -80,24 +112,27 @@ int Commands::add(vector<string> args) {
 						Index::stagePath(full_path, idx);
 						added_count++;
 						cout << "rename " << old_path << " -> " << file_path << "\n";
-					} else {
+					}
+					else {
 						// 处理修改和新增的文件
 						fs::path full_path = FileSystemUtils::repoRoot() / file_path;
 						Index::stagePath(full_path, idx);
 						added_count++;
-						cout << "add " << file_path << " (" << 
+						cout << "add " << file_path << " (" <<
 							(modified_files.count(file_path) ? "modified" : "new") << ")\n";
 					}
 				}
 			}
-		} else {
+		}
+		else {
 			// 单个文件处理
-			string rel_path = fs::relative(p, FileSystemUtils::repoRoot()).string();
+			// rel_path 已经在上面计算过了
+
+			// 检查文件状态
+			bool has_changes = modified_files.count(rel_path) || untracked_files.count(rel_path) ||
+						   deleted_files.count(rel_path) || renamed_files.count(rel_path);
 			
-			// 添加修改、新增、删除和重命名的文件
-			if (modified_files.count(rel_path) || untracked_files.count(rel_path) || 
-			    deleted_files.count(rel_path) || renamed_files.count(rel_path)) {
-				
+			if (has_changes) {
 				if (deleted_files.count(rel_path)) {
 					// 处理删除的文件：从暂存区移除
 					auto it = idx.find(rel_path);
@@ -106,7 +141,11 @@ int Commands::add(vector<string> args) {
 						added_count++;
 						cout << "remove " << rel_path << " (deleted)\n";
 					}
-				} else if (renamed_files.count(rel_path)) {
+					else {
+						cout << "skip " << rel_path << " (already removed from index)\n";
+					}
+				}
+				else if (renamed_files.count(rel_path)) {
 					// 处理重命名的文件：移除旧文件，添加新文件
 					string old_path = renamed_files[rel_path];
 					auto it = idx.find(old_path);
@@ -116,25 +155,28 @@ int Commands::add(vector<string> args) {
 					Index::stagePath(p, idx);
 					added_count++;
 					cout << "rename " << old_path << " -> " << rel_path << "\n";
-				} else {
+				}
+				else {
 					// 处理修改和新增的文件
-					Index::stagePath(p, idx);
+					Index::stagePath(abs_p, idx);
 					added_count++;
-					cout << "add " << rel_path << " (" << 
+					cout << "add " << rel_path << " (" <<
 						(modified_files.count(rel_path) ? "modified" : "new") << ")\n";
 				}
-			} else {
+			}
+			else {
 				cout << "skip " << rel_path << " (unchanged)\n";
 			}
 		}
 	}
-	
+
 	if (added_count == 0) {
 		cout << "No modified, new, deleted, or renamed files to add.\n";
-	} else {
+	}
+	else {
 		cout << "Processed " << added_count << " file change(s) in staging area.\n";
 	}
-	
+
 	Index::write(idx);
 	return 0;
 }
@@ -164,9 +206,9 @@ int Commands::commit(vector<string> args) {
 	c.tree = idx;
 	string id = CommitManager::storeCommit(c);
 
-	// 清空暂存区 - 提交后暂存区应该为空
-	Index::IndexMap empty_index;
-	Index::write(empty_index);
+	// 正确的做法：提交后暂存区应该与新的HEAD提交内容一致
+	// 而不是清空暂存区
+	// 暂存区已经包含了正确的文件，不需要清空
 
 	cout << "Committed " << id.substr(0, 12) << " - " << msg << "\n";
 	return 0;
@@ -340,6 +382,9 @@ int Commands::status() {
 			else if (file_status.status == "??") {
 				cout << " (untracked)";
 			}
+			else if (file_status.status == "HD") {
+				cout << " (historically deleted)";
+			}
 			cout << "\n";
 		}
 	}
@@ -417,7 +462,10 @@ int Commands::reset(vector<string> args) {
 	// Step 1: Always update HEAD to target commit
 	FileSystemUtils::writeText(FileSystemUtils::headPath(), target_commit);
 
-	// Step 2: Update index if mixed or hard mode
+	// Step 2: Save current index before updating (needed for hard mode)
+	auto current_index = Index::read();
+	
+	// Update index if mixed or hard mode
 	if (mode == "mixed" || mode == "hard") {
 		// Clear current index and set it to target commit's tree
 		Index::write(target->tree);
@@ -426,27 +474,50 @@ int Commands::reset(vector<string> args) {
 
 	// Step 3: Update working directory if hard mode
 	if (mode == "hard") {
-		// Remove all tracked files from working directory
-		auto current_index = Index::read();
-		for (auto& kv : current_index) {
-			fs::path file_path = FileSystemUtils::repoRoot() / kv.first;
-			if (fs::exists(file_path)) {
+		// 收集当前工作目录中所有文件（在更新暂存区之前）
+		vector<string> current_working_files;
+		scanWorkingDirectory(FileSystemUtils::repoRoot(), current_working_files);
+		
+		// 收集当前暂存区和HEAD中跟踪的文件（在更新之前）
+		set<string> tracked_files;
+		for (const auto& kv : current_index) {
+			tracked_files.insert(kv.first);
+		}
+		// 如果有HEAD提交，也包含HEAD中的文件
+		string current_head = FileSystemUtils::readText(FileSystemUtils::headPath());
+		if (!current_head.empty()) {
+			auto current_head_commit = CommitManager::loadCommit(current_head);
+			if (current_head_commit) {
+				for (const auto& kv : current_head_commit->tree) {
+					tracked_files.insert(kv.first);
+				}
+			}
+		}
+		
+		// 删除工作目录中存在但在目标提交中不存在的跟踪文件
+		for (const string& file_path : current_working_files) {
+			// 只处理跟踪的文件，忽略未跟踪的文件
+			if (tracked_files.find(file_path) != tracked_files.end() && 
+				target->tree.find(file_path) == target->tree.end()) {
+				fs::path full_path = FileSystemUtils::repoRoot() / file_path;
 				try {
-					fs::remove(file_path);
+					fs::remove(full_path);
+					cout << "Removed: " << file_path << "\n";
 				}
 				catch (const exception& e) {
-					cerr << "Warning: Could not remove " << kv.first << ": " << e.what() << "\n";
+					cerr << "Warning: Could not remove " << file_path << ": " << e.what() << "\n";
 				}
 			}
 		}
 
-		// Write files from target commit to working directory
+		// 恢复目标提交中的所有文件到工作目录
 		for (auto& kv : target->tree) {
 			fs::path out = FileSystemUtils::repoRoot() / kv.first;
 			fs::create_directories(out.parent_path());
 			try {
 				fs::copy_file(FileSystemUtils::objectsDir() / kv.second, out,
 					fs::copy_options::overwrite_existing);
+				cout << "Restored: " << kv.first << "\n";
 			}
 			catch (const exception& e) {
 				cerr << "Warning: Could not restore " << kv.first << ": " << e.what() << "\n";
@@ -535,11 +606,8 @@ int Commands::log(vector<string> args) {
 			cout << "Date: " << commit.timestamp << "\n";
 			cout << "\n    " << commit.message << "\n";
 
-			// 显示文件变更统计
-			cout << "\n    Files changed: " << commit.tree.size() << "\n";
-			for (const auto& file : commit.tree) {
-				cout << "        " << file.first << " (" << file.second.substr(0, 12) << ")\n";
-			}
+			// 计算并显示文件变更（包括删除的文件）
+			showCommitChanges(commit);
 			cout << "\n";
 		}
 	}
@@ -558,10 +626,11 @@ string Commands::calculateWorkingFileHash(const fs::path& file_path) {
 
 void Commands::scanWorkingDirectory(const fs::path& dir, vector<string>& files) {
 	try {
-		for (auto& entry : fs::recursive_directory_iterator(dir, 
+		for (auto& entry : fs::recursive_directory_iterator(dir,
 			fs::directory_options::skip_permission_denied)) {
 			try {
-				if (entry.is_regular_file() && !FileSystemUtils::isIgnored(entry.path())) {
+				bool irf = entry.is_regular_file();
+				if (irf && !FileSystemUtils::isIgnored(entry.path())) {
 					string relative_path = fs::relative(entry.path(), FileSystemUtils::repoRoot()).generic_string();
 					files.push_back(relative_path);
 				}
@@ -577,10 +646,115 @@ void Commands::scanWorkingDirectory(const fs::path& dir, vector<string>& files) 
 	}
 }
 
+// 获取历史提交中所有曾经存在的文件（用于检测意外删除）
+Index::IndexMap Commands::getHistoricalFiles(const string& head_commit_id) {
+	Index::IndexMap historical_files;
+	
+	if (head_commit_id.empty()) {
+		return historical_files; // 空仓库，没有历史文件
+	}
+	
+	// 遍历所有历史提交，收集所有曾经存在的文件
+	string current_commit_id = head_commit_id;
+	set<string> visited_commits; // 防止无限循环
+	
+	while (!current_commit_id.empty() && visited_commits.find(current_commit_id) == visited_commits.end()) {
+		visited_commits.insert(current_commit_id);
+		
+		auto commit_opt = CommitManager::loadCommit(current_commit_id);
+		if (!commit_opt) {
+			break; // 无法加载提交，停止遍历
+		}
+		
+		// 将当前提交中的所有文件添加到历史文件集合中
+		for (const auto& file_entry : commit_opt->tree) {
+			const string& file_path = file_entry.first;
+			const string& file_hash = file_entry.second;
+			
+			// 如果该文件尚未被记录，或者当前提交中的版本更新，则保存
+			if (historical_files.find(file_path) == historical_files.end()) {
+				historical_files[file_path] = file_hash;
+			}
+		}
+		
+		// 移动到父提交
+		current_commit_id = commit_opt->parent;
+	}
+	
+	return historical_files;
+}
+
+// 显示提交的文件变更（包括新增、修改和删除）
+void Commands::showCommitChanges(const Commit& commit) {
+	Index::IndexMap parent_files;
+	
+	// 获取父提交的文件列表
+	if (!commit.parent.empty()) {
+		auto parent_commit = CommitManager::loadCommit(commit.parent);
+		if (parent_commit) {
+			parent_files = parent_commit->tree;
+		}
+	}
+	
+	vector<pair<string, string>> added_files;      // 新增的文件
+	vector<pair<string, string>> modified_files;   // 修改的文件
+	vector<string> deleted_files;                  // 删除的文件
+	
+	// 检查当前提交中的文件（新增或修改）
+	for (const auto& file : commit.tree) {
+		const string& file_path = file.first;
+		const string& file_hash = file.second;
+		
+		auto parent_it = parent_files.find(file_path);
+		if (parent_it == parent_files.end()) {
+			// 文件在父提交中不存在，是新增的
+			added_files.push_back({file_path, file_hash});
+		} else if (parent_it->second != file_hash) {
+			// 文件在父提交中存在但哈希不同，是修改的
+			modified_files.push_back({file_path, file_hash});
+		}
+		// 如果哈希相同，则文件未变更，不显示
+	}
+	
+	// 检查父提交中的文件是否被删除
+	for (const auto& parent_file : parent_files) {
+		const string& file_path = parent_file.first;
+		
+		if (commit.tree.find(file_path) == commit.tree.end()) {
+			// 文件在当前提交中不存在，被删除了
+			deleted_files.push_back(file_path);
+		}
+	}
+	
+	// 计算总变更数
+	int total_changes = added_files.size() + modified_files.size() + deleted_files.size();
+	
+	cout << "\n    Files changed: " << total_changes;
+	if (added_files.size() > 0) cout << " (+" << added_files.size() << " added)";
+	if (modified_files.size() > 0) cout << " (~" << modified_files.size() << " modified)";
+	if (deleted_files.size() > 0) cout << " (-" << deleted_files.size() << " deleted)";
+	cout << "\n";
+	
+	// 显示新增的文件
+	for (const auto& file : added_files) {
+		cout << "        + " << file.first << " (" << file.second.substr(0, 12) << ")\n";
+	}
+	
+	// 显示修改的文件
+	for (const auto& file : modified_files) {
+		cout << "        ~ " << file.first << " (" << file.second.substr(0, 12) << ")\n";
+	}
+	
+	// 显示删除的文件
+	for (const string& file_path : deleted_files) {
+		cout << "        - " << file_path << " (deleted)\n";
+	}
+}
+
 vector<Commands::FileStatus> Commands::getWorkingDirectoryStatus() {
 	vector<FileStatus> statuses;
 	auto index = Index::read();
-	
+
 	// 获取当前HEAD提交中的文件
 	Index::IndexMap head_files;
 	string head_commit_id = FileSystemUtils::readText(FileSystemUtils::headPath());
@@ -591,11 +765,14 @@ vector<Commands::FileStatus> Commands::getWorkingDirectoryStatus() {
 		}
 	}
 
+	// 获取历史提交中所有曾经存在的文件（用于检测意外删除）
+	Index::IndexMap historical_files = getHistoricalFiles(head_commit_id);
+
 	// 获取工作目录中的所有文件
 	vector<string> working_files;
 	scanWorkingDirectory(FileSystemUtils::repoRoot(), working_files);
 
-	// 创建所有文件的集合（HEAD提交 + 暂存区 + 工作目录）
+	// 创建所有文件的集合（HEAD提交 + 暂存区 + 工作目录 + 历史文件）
 	set<string> all_files;
 	for (const auto& kv : head_files) {
 		all_files.insert(kv.first);
@@ -605,6 +782,10 @@ vector<Commands::FileStatus> Commands::getWorkingDirectoryStatus() {
 	}
 	for (const auto& file : working_files) {
 		all_files.insert(file);
+	}
+	// 添加历史文件到检测集合
+	for (const auto& kv : historical_files) {
+		all_files.insert(kv.first);
 	}
 
 	// 分析每个文件的状态
@@ -616,50 +797,98 @@ vector<Commands::FileStatus> Commands::getWorkingDirectoryStatus() {
 		bool exists_in_working = fs::exists(full_path);
 		bool exists_in_index = index.find(file_path) != index.end();
 		bool exists_in_head = head_files.find(file_path) != head_files.end();
-
-		if (exists_in_index) {
-			status.staged_hash = index[file_path];
-		}
+		bool exists_in_history = historical_files.find(file_path) != historical_files.end();
 		
 		string head_hash;
 		if (exists_in_head) {
 			head_hash = head_files[file_path];
 		}
-
-		if (exists_in_working) {
-			status.working_hash = calculateWorkingFileHash(full_path);
+		
+		string staged_hash;
+		if (exists_in_index) {
+			staged_hash = index[file_path];
+			status.staged_hash = staged_hash;
 		}
 
-		// 决定文件状态
+		string working_hash;
+		if (exists_in_working) {
+			working_hash = calculateWorkingFileHash(full_path);
+			status.working_hash = working_hash;
+		}
+
+		// 决定文件状态 - 使用更清晰的条件判断，包括历史文件检测
 		if (!exists_in_head && !exists_in_index && exists_in_working) {
-			// 全新文件（未跟踪）
+			// 情况1: 全新文件（未跟踪）
 			status.status = "??";
 		}
-		else if (exists_in_head && !exists_in_working) {
-			// 已删除的文件
+		else if (exists_in_head && !exists_in_index && !exists_in_working) {
+			// 情况2: 在HEAD中存在，但已从工作目录删除，且未暂存删除操作
 			status.status = "D";
-			status.staged_hash = head_hash; // 使用HEAD中的哈希作为基准
+			status.staged_hash = head_hash; // 保存HEAD中的哈希用于对比
 		}
-		else if (exists_in_head && exists_in_working) {
-			if (head_hash != status.working_hash) {
-				// 已修改的文件
-				status.status = "M";
-				status.staged_hash = head_hash; // 使用HEAD中的哈希作为基准
+		else if (!exists_in_head && !exists_in_index && !exists_in_working && exists_in_history) {
+			// 情况新增: 在历史提交中存在但现在完全不存在的文件（可能被意外删除）
+			status.status = "HD"; // Historical Deleted - 历史删除
+			status.staged_hash = historical_files[file_path]; // 使用历史中最后一次的哈希
+		}
+		else if (exists_in_head && exists_in_index && !exists_in_working) {
+			// 情况3: 在HEAD和暂存区中存在，但已从工作目录删除
+			if (head_hash == staged_hash) {
+				// 暂存区中是删除操作
+				status.status = "D";
 			}
 			else {
-				// 未修改的文件（不显示）
-				continue;
+				// 暂存区中有修改，但工作目录中删除了
+				status.status = "MD"; // 修改后删除
 			}
+		}
+		else if (!exists_in_head && exists_in_index && !exists_in_working) {
+			// 情况4: 暂存了新文件，但随后从工作目录删除
+			// 这是您提到的关键场景：文件在暂存区中存在，但在HEAD和工作目录中都不存在
+			status.status = "AD"; // 添加后删除
+			status.staged_hash = staged_hash; // 保留暂存区中的哈希
 		}
 		else if (!exists_in_head && exists_in_index && exists_in_working) {
-			// 暂存区中的新文件
-			if (status.staged_hash != status.working_hash) {
-				// 暂存后又修改的文件
-				status.status = "M";
+			// 情况5: 新文件已暂存
+			if (staged_hash == working_hash) {
+				// 新文件已暂存且未修改
+				status.status = "A";
 			}
 			else {
-				// 暂存区中的新文件（未修改）
+				// 新文件已暂存但随后修改
+				status.status = "AM";
+			}
+		}
+		else if (exists_in_head && !exists_in_index && exists_in_working) {
+			// 情况6: HEAD中存在，暂存区中没有，工作目录中存在
+			if (head_hash == working_hash) {
+				// 文件未修改，不显示
 				continue;
+			}
+			else {
+				// 文件已修改但未暂存
+				status.status = "M";
+				status.staged_hash = head_hash; // 用HEAD作为基准
+			}
+		}
+		else if (exists_in_head && exists_in_index && exists_in_working) {
+			// 情况7: 三个地方都存在
+			if (head_hash == staged_hash && staged_hash == working_hash) {
+				// 完全相同，不显示
+				continue;
+			}
+			else if (head_hash != staged_hash && staged_hash == working_hash) {
+				// 已暂存修改，工作目录未变
+				status.status = "M";
+			}
+			else if (head_hash == staged_hash && staged_hash != working_hash) {
+				// 暂存区未变，工作目录有修改
+				status.status = "M";
+				status.staged_hash = head_hash;
+			}
+			else {
+				// 暂存区和工作目录都有修改
+				status.status = "MM"; // 双重修改
 			}
 		}
 
@@ -714,7 +943,7 @@ int Commands::diff(vector<string> args) {
 			return 0;
 		}
 
-		cout << "Changes in working directory:\n";
+		printf("Changes in working directory:\n");
 		for (const auto& file_status : working_status) {
 			if (name_only) {
 				cout << file_status.path << "\n";
@@ -730,6 +959,24 @@ int Commands::diff(vector<string> args) {
 				}
 				else if (file_status.status == "??") {
 					cout << " (untracked, hash: " << file_status.working_hash.substr(0, 12) << ")";
+				}
+				else if (file_status.status == "A") {
+					cout << " (new file staged)";
+				}
+				else if (file_status.status == "AM") {
+					cout << " (new file staged, then modified)";
+				}
+				else if (file_status.status == "AD") {
+					cout << " (new file staged, then deleted - staged hash: " << file_status.staged_hash.substr(0, 12) << ")";
+				}
+				else if (file_status.status == "MD") {
+					cout << " (modified in stage, then deleted)";
+				}
+				else if (file_status.status == "MM") {
+					cout << " (modified in stage and working directory)";
+				}
+				else if (file_status.status == "HD") {
+					cout << " (historically deleted - existed in commit " << file_status.staged_hash.substr(0, 12) << ")";
 				}
 				cout << "\n";
 			}
@@ -867,41 +1114,42 @@ void Commands::detectRenames(vector<FileStatus>& statuses) {
 	// 收集删除和新增的文件
 	vector<size_t> deleted_indices;
 	vector<size_t> new_indices;
-	
+
 	for (size_t i = 0; i < statuses.size(); ++i) {
 		if (statuses[i].status == "D") {
 			deleted_indices.push_back(i);
-		} else if (statuses[i].status == "??") {
+		}
+		else if (statuses[i].status == "??") {
 			new_indices.push_back(i);
 		}
 	}
-	
+
 	// 检测重命名：删除的文件哈希与新文件哈希相同
 	for (size_t del_idx : deleted_indices) {
 		const auto& deleted_file = statuses[del_idx];
 		if (deleted_file.staged_hash.empty()) continue;
-		
+
 		for (size_t new_idx : new_indices) {
 			auto& new_file = statuses[new_idx];
 			if (new_file.working_hash.empty()) continue;
-			
+
 			// 如果哈希相同，认为是重命名
 			if (deleted_file.staged_hash == new_file.working_hash) {
 				// 将新文件标记为重命名
 				new_file.status = "R";
 				new_file.old_path = deleted_file.path;
 				new_file.staged_hash = deleted_file.staged_hash;
-				
+
 				// 从列表中移除已删除的文件（标记为已处理）
 				statuses[del_idx].status = "";
 				break;
 			}
 		}
 	}
-	
+
 	// 移除已处理的删除文件（status为空的）
 	statuses.erase(
-		remove_if(statuses.begin(), statuses.end(), 
+		remove_if(statuses.begin(), statuses.end(),
 			[](const FileStatus& fs) { return fs.status.empty(); }),
 		statuses.end()
 	);
