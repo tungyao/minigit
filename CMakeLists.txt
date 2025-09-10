@@ -6,6 +6,33 @@ project(MiniGit
     LANGUAGES C CXX
 )
 
+include(FetchContent)
+FetchContent_Declare(
+    zlib
+    URL https://zlib.net/zlib-1.3.1.tar.gz   # 你可以换成更稳定的版本
+)
+# 生成 zconf.h
+if(EXISTS ${zlib_SOURCE_DIR}/zconf.h.in AND NOT EXISTS ${zlib_SOURCE_DIR}/zconf.h)
+    configure_file(${zlib_SOURCE_DIR}/zconf.h.in ${SOURCE_DIR}/zconf.h COPYONLY)
+endif()
+FetchContent_MakeAvailable(zlib)
+set(ZLIB_SOURCES
+    ${zlib_SOURCE_DIR}/adler32.c
+    ${zlib_SOURCE_DIR}/compress.c
+    ${zlib_SOURCE_DIR}/crc32.c
+    ${zlib_SOURCE_DIR}/deflate.c
+    ${zlib_SOURCE_DIR}/gzclose.c
+    ${zlib_SOURCE_DIR}/gzlib.c
+    ${zlib_SOURCE_DIR}/gzread.c
+    ${zlib_SOURCE_DIR}/gzwrite.c
+    ${zlib_SOURCE_DIR}/infback.c
+    ${zlib_SOURCE_DIR}/inffast.c
+    ${zlib_SOURCE_DIR}/inflate.c
+    ${zlib_SOURCE_DIR}/inftrees.c
+    ${zlib_SOURCE_DIR}/trees.c
+    ${zlib_SOURCE_DIR}/uncompr.c
+    ${zlib_SOURCE_DIR}/zutil.c
+)
 # 设置C++标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,13 +81,13 @@ endif()
 #endif()
 
 # 查找zlib库（用于压缩）
-find_package(ZLIB REQUIRED)
-if(ZLIB_FOUND)
-    message(STATUS "Found ZLIB: ${ZLIB_VERSION_STRING}")
-    set(COMPRESSION_LIBS ${ZLIB_LIBRARIES})
-else()
-    message(FATAL_ERROR "ZLIB not found, required for compression")
-endif()
+#find_package(ZLIB REQUIRED)
+#if(ZLIB_FOUND)
+#    message(STATUS "Found ZLIB: ${ZLIB_VERSION_STRING}")
+#    set(COMPRESSION_LIBS ${ZLIB_LIBRARIES})
+#else()
+#    message(FATAL_ERROR "ZLIB not found, required for compression")
+#endif()
 
 # 收集源文件
 set(SOURCES
@@ -106,10 +133,10 @@ set(HEADERS
 )
 
 # 添加可执行文件
-add_executable(minigit ${SOURCES} ${HEADERS})
+add_executable(minigit ${SOURCES} ${HEADERS} ${ZLIB_SOURCES})
 
 # 包含头文件目录
-target_include_directories(minigit PRIVATE src ${ZLIB_INCLUDE_DIRS})
+target_include_directories(minigit PRIVATE src ${ZLIB_INCLUDE_DIRS} ${zlib_SOURCE_DIR})
 
 # 设置输出目录
 set_target_properties(minigit PROPERTIES
@@ -119,10 +146,10 @@ set_target_properties(minigit PROPERTIES
 # 链接必要的库
 if(WIN32)
     # Windows下需要的库
-    target_link_libraries(minigit ${NETWORK_LIBS} ${COMPRESSION_LIBS})
+    target_link_libraries(minigit ${NETWORK_LIBS} zlibstatic)
 else()
     # Linux下需要的库
-    target_link_libraries(minigit Threads::Threads ${NETWORK_LIBS} ${COMPRESSION_LIBS})
+    target_link_libraries(minigit Threads::Threads ${NETWORK_LIBS})
 endif()
 
 # 安装规则（可选）

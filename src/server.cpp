@@ -342,12 +342,12 @@ bool Server::createServerSocket() {
 	server_addr.sin_addr.s_addr = INADDR_ANY;
 	server_addr.sin_port = htons(Config::getInstance().port);
 
-	if (bind(server_socket_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+	if (::bind(server_socket_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
 		return false;
 	}
 
 	// 开始监听
-	if (listen(server_socket_, 10) < 0) {
+	if (::listen(server_socket_, 10) < 0) {
 		return false;
 	}
 
@@ -1073,8 +1073,8 @@ bool Server::handlePushCompressedData(int client_socket, shared_ptr<ClientSessio
 		msg.payload.end()
 	);
 
-	cout << "接收到 " << ProgressDisplay::formatFileSize(compressed_data.size()) 
-		 << " 压缩数据，包含 " << payload.file_count << " 个文件\n";
+	cout << "接收到 " << ProgressDisplay::formatFileSize(compressed_data.size())
+		<< " 压缩数据，包含 " << payload.file_count << " 个文件\n";
 
 	// 获取仓库路径
 	fs::path repo_path = fs::path(Config::getInstance().root_path) / session->current_repo;
@@ -1125,13 +1125,13 @@ bool Server::handlePullRequest(int client_socket, shared_ptr<ClientSession> sess
 	// 收集需要发送的文件
 	vector<fs::path> files_to_send;
 	vector<fs::path> relative_paths;
-	
+
 	// 添加HEAD文件
 	if (fs::exists(repo_path / "HEAD")) {
 		files_to_send.push_back(repo_path / "HEAD");
 		relative_paths.push_back("HEAD");
 	}
-	
+
 	// 添加对象文件
 	if (fs::exists(repo_path / "objects")) {
 		for (auto& e : fs::directory_iterator(repo_path / "objects")) {
@@ -1141,14 +1141,14 @@ bool Server::handlePullRequest(int client_socket, shared_ptr<ClientSession> sess
 			}
 		}
 	}
-	
+
 	if (files_to_send.empty()) {
 		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "No files to pull");
 		return false;
 	}
 
 	cout << "压缩 " << files_to_send.size() << " 个文件...\n";
-	
+
 	// 创建压缩归档
 	vector<uint8_t> compressed_archive;
 	bool compression_success = CompressionUtils::createCompressedArchive(
@@ -1159,18 +1159,18 @@ bool Server::handlePullRequest(int client_socket, shared_ptr<ClientSession> sess
 			// 服务器端可以选择不显示进度，或记录到日志
 		}
 	);
-	
+
 	if (!compression_success) {
 		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to compress data");
 		return false;
 	}
 
-	cout << "发送 " << ProgressDisplay::formatFileSize(compressed_archive.size()) 
-		 << " 压缩数据，包含 " << files_to_send.size() << " 个文件\n";
+	cout << "发送 " << ProgressDisplay::formatFileSize(compressed_archive.size())
+		<< " 压缩数据，包含 " << files_to_send.size() << " 个文件\n";
 
 	// 发送压缩数据
 	auto compressed_msg = ProtocolMessage::createCompressedDataMessage(
-		MessageType::PULL_COMPRESSED_DATA, 
+		MessageType::PULL_COMPRESSED_DATA,
 		1, // pull operation
 		compressed_archive,
 		0, // 原始大小
@@ -1345,7 +1345,7 @@ bool Server::handleCloneRequest(int client_socket, shared_ptr<ClientSession> ses
 		}
 
 		cout << "压缩 " << files_to_send.size() << " 个文件...\n";
-		
+
 		// 创建压缩归档
 		vector<uint8_t> compressed_archive;
 		bool compression_success = CompressionUtils::createCompressedArchive(
@@ -1356,18 +1356,18 @@ bool Server::handleCloneRequest(int client_socket, shared_ptr<ClientSession> ses
 				// 服务器端可以选择不显示进度，或记录到日志
 			}
 		);
-		
+
 		if (!compression_success) {
 			sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to compress repository");
 			return false;
 		}
 
-		cout << "发送 " << ProgressDisplay::formatFileSize(compressed_archive.size()) 
-			 << " 压缩数据，包含 " << files_to_send.size() << " 个文件\n";
+		cout << "发送 " << ProgressDisplay::formatFileSize(compressed_archive.size())
+			<< " 压缩数据，包含 " << files_to_send.size() << " 个文件\n";
 
 		// 发送压缩克隆数据
 		auto compressed_msg = ProtocolMessage::createCompressedDataMessage(
-			MessageType::CLONE_COMPRESSED_DATA, 
+			MessageType::CLONE_COMPRESSED_DATA,
 			2, // clone operation
 			compressed_archive,
 			0, // 原始大小

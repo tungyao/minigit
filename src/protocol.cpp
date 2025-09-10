@@ -452,10 +452,10 @@ ProtocolMessage ProtocolMessage::createLogResponse(const vector<pair<string, str
 }
 
 // 创建压缩数据消息
-ProtocolMessage ProtocolMessage::createCompressedDataMessage(MessageType type, 
-	uint32_t operation_type, const vector<uint8_t>& compressed_data, 
+ProtocolMessage ProtocolMessage::createCompressedDataMessage(MessageType type,
+	uint32_t operation_type, const vector<uint8_t>& compressed_data,
 	uint64_t original_size, uint32_t file_count) {
-	
+
 	// 创建压缩数据负载头部
 	CompressedDataPayload payload;
 	payload.operation_type = operation_type;
@@ -467,13 +467,13 @@ ProtocolMessage ProtocolMessage::createCompressedDataMessage(MessageType type,
 	// 组装完整数据
 	vector<uint8_t> data;
 	data.resize(sizeof(CompressedDataPayload) + compressed_data.size());
-	
+
 	// 复制头部
 	memcpy(data.data(), &payload, sizeof(CompressedDataPayload));
-	
+
 	// 复制压缩数据
-	memcpy(data.data() + sizeof(CompressedDataPayload), 
-		   compressed_data.data(), compressed_data.size());
+	memcpy(data.data() + sizeof(CompressedDataPayload),
+		compressed_data.data(), compressed_data.size());
 
 	return ProtocolMessage(type, data);
 }
@@ -649,8 +649,9 @@ bool NetworkUtils::setSocketTimeout(int socket, int timeout_seconds) {
 bool NetworkUtils::isSocketConnected(int socket) {
 #ifdef _WIN32
 	//int result = recv(socket, buffer, 1, MSG_PEEK);
-	auto heartbeat = ProtocolMessage(MessageType::HEARTBEAT);
-	return NetworkUtils::sendMessage(socket, heartbeat);;
+	//auto heartbeat = ProtocolMessage(MessageType::HEARTBEAT);
+	//return NetworkUtils::sendMessage(socket, heartbeat);;
+	return 1;
 #else
 	char buffer[1];
 	ssize_t result = recv(socket, buffer, 1, MSG_PEEK | MSG_DONTWAIT);

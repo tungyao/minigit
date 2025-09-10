@@ -1629,13 +1629,13 @@ bool Client::pushCompressed() {
 	// 收集需要推送的文件
 	vector<fs::path> files_to_push;
 	vector<fs::path> relative_paths;
-	
+
 	// 添加HEAD文件
 	if (fs::exists(FileSystemUtils::headPath())) {
 		files_to_push.push_back(FileSystemUtils::headPath());
 		relative_paths.push_back("HEAD");
 	}
-	
+
 	// 添加对象文件
 	if (fs::exists(FileSystemUtils::objectsDir())) {
 		for (auto& e : fs::directory_iterator(FileSystemUtils::objectsDir())) {
@@ -1643,14 +1643,14 @@ bool Client::pushCompressed() {
 			relative_paths.push_back(fs::path("objects") / e.path().filename());
 		}
 	}
-	
+
 	if (files_to_push.empty()) {
 		cout << "No files to push\n";
 		return true;
 	}
 
 	cout << "正在压缩 " << files_to_push.size() << " 个文件...\n";
-	
+
 	// 创建压缩归档
 	vector<uint8_t> compressed_archive;
 	bool compression_success = CompressionUtils::createCompressedArchive(
@@ -1661,9 +1661,9 @@ bool Client::pushCompressed() {
 			ProgressDisplay::showCompressionProgress(progress, "压缩", description);
 		}
 	);
-	
+
 	ProgressDisplay::finish();
-	
+
 	if (!compression_success) {
 		cerr << "Compression failed\n";
 		return false;
@@ -1673,7 +1673,7 @@ bool Client::pushCompressed() {
 
 	// 发送压缩数据
 	auto compressed_msg = ProtocolMessage::createCompressedDataMessage(
-		MessageType::PUSH_COMPRESSED_DATA, 
+		MessageType::PUSH_COMPRESSED_DATA,
 		0, // push operation
 		compressed_archive,
 		0, // 原始大小可以在这里计算，简化起见暂时设为0
@@ -1693,8 +1693,8 @@ bool Client::pushCompressed() {
 	}
 
 	if (push_response.header.type == MessageType::PUSH_RESPONSE) {
-		cout << "压缩推送完成！传输了 " << ProgressDisplay::formatFileSize(compressed_archive.size()) 
-			 << " 压缩数据，包含 " << files_to_push.size() << " 个文件\n";
+		cout << "压缩推送完成！传输了 " << ProgressDisplay::formatFileSize(compressed_archive.size())
+			<< " 压缩数据，包含 " << files_to_push.size() << " 个文件\n";
 		return true;
 	}
 	else if (push_response.header.type == MessageType::ERROR_MSG) {
