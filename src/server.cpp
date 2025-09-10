@@ -166,7 +166,6 @@ private:
 // Server类的私有成员
 class Server::Impl {
 public:
-	Config config;
 	bool running;
 	map<int, shared_ptr<ClientSession>> sessions;
 	unique_ptr<RepositoryManager> repo_manager;
@@ -180,23 +179,22 @@ public:
 	int server_socket;
 #endif
 
-	Impl(const Config& cfg) : config(cfg), running(false) {
-		repo_manager = make_unique<RepositoryManager>(config.root_path);
+	Impl() : running(false) {
+		repo_manager = make_unique<RepositoryManager>(Config::getInstance().root_path);
 
-		if (!config.password.empty()) {
-			symmetric_key = Crypto::generateKeyFromPassword(config.password);
+		if (!Config::getInstance().password.empty()) {
+			symmetric_key = Crypto::generateKeyFromPassword(Config::getInstance().password);
 		}
 
-		if (!config.cert_path.empty()) {
-			rsa_keypair = Crypto::loadRSAKeyPair(config.cert_path);
-			config.use_ssl = !rsa_keypair.private_key.empty();
+		if (!Config::getInstance().cert_path.empty()) {
+			rsa_keypair = Crypto::loadRSAKeyPair(Config::getInstance().cert_path);
+			Config::getInstance().use_ssl = !rsa_keypair.private_key.empty();
 		}
 	}
 };
 
 // 构造函数
-Server::Server(const Config& config) : impl_(make_unique<Impl>(config)) {
-	config_ = config;
+Server::Server() : impl_(make_unique<Impl>()) {
 	running_ = false;
 }
 
@@ -218,13 +216,13 @@ int Server::run() {
 		return 1;
 	}
 
-	cout << "MiniGit server started on port " << config_.port << "\n";
-	cout << "Root path: " << config_.root_path << "\n";
+	cout << "MiniGit server started on port " << Config::getInstance().port << "\n";
+	cout << "Root path: " << Config::getInstance().root_path << "\n";
 
-	if (!config_.password.empty()) {
+	if (!Config::getInstance().password.empty()) {
 		cout << "Authentication: Password-based\n";
 	}
-	else if (config_.use_ssl) {
+	else if (Config::getInstance().use_ssl) {
 		cout << "Authentication: RSA certificate\n";
 	}
 	else {
@@ -340,7 +338,7 @@ bool Server::createServerSocket() {
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = INADDR_ANY;
-	server_addr.sin_port = htons(config_.port);
+	server_addr.sin_port = htons(Config::getInstance().port);
 
 	if (bind(server_socket_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
 		return false;
@@ -390,7 +388,7 @@ void Server::handleClient(int client_socket) {
 
 	try {
 		// 主消息处理循环
-		while (running_ && NetworkUtils::isSocketConnected(client_socket)) {
+		while (running_ && client_socket) {
 			ProtocolMessage msg;
 			if (!NetworkUtils::receiveMessage(client_socket, msg)) {
 				break;
@@ -549,18 +547,23 @@ bool Server::handleAuthRequest(int client_socket, shared_ptr<ClientSession> sess
 
 	if (auth_payload.auth_type == 0) {
 		// 密码认证
-		if (!config_.password.empty()) {
+		if (!Config::getInstance().password.empty()) {
 			string provided_password = Crypto::bytesToString(auth_data);
-			cout << "Debug: Server password: '" << config_.password << "'" << endl;
+#ifdef DEBUG
+			cout << "Debug: Server password: '" << Config::getInstance().password << "'" << endl;
 			cout << "Debug: Provided password: '" << provided_password << "'" << endl;
-			cout << "Debug: Lengths - server: " << config_.password.length() << ", provided: " << provided_password.length() << endl;
-			auth_success = (provided_password == config_.password);
+			cout << "Debug: Lengths - server: " << Config::getInstance().password.length() << ", provided: " << provided_password.length() << endl;
+#endif // DEBUG
+			auth_success = (provided_password == Config::getInstance().password);
+#ifdef DEBUG
 			cout << "Debug: Auth result: " << (auth_success ? "SUCCESS" : "FAILED") << endl;
+
+#endif // DEBUG
 		}
 	}
 	else if (auth_payload.auth_type == 1) {
 		// RSA证书认证
-		if (config_.use_ssl) {
+		if (Config::getInstance().use_ssl) {
 			// 简化的证书验证
 			auth_success = !auth_data.empty();
 		}
@@ -838,10 +841,10 @@ bool Server::handlePushCheckRequest(int client_socket, shared_ptr<ClientSession>
 	memcpy(&check_payload, msg.payload.data(), sizeof(PushCheckRequestPayload));
 
 	// 检查数据完整性
-	size_t required_size = sizeof(PushCheckRequestPayload) + 
-						check_payload.local_head_length + 
-						check_payload.new_commit_id_length + 
-						check_payload.commit_parent_length;
+	size_t required_size = sizeof(PushCheckRequestPayload) +
+		check_payload.local_head_length +
+		check_payload.new_commit_id_length +
+		check_payload.commit_parent_length;
 	if (msg.payload.size() < required_size) {
 		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Incomplete push check request data");
 		return false;
@@ -849,7 +852,7 @@ bool Server::handlePushCheckRequest(int client_socket, shared_ptr<ClientSession>
 
 	// 解析各个字段
 	size_t offset = sizeof(PushCheckRequestPayload);
-	
+
 	string local_head;
 	if (check_payload.local_head_length > 0) {
 		local_head = string(reinterpret_cast<const char*>(msg.payload.data() + offset), check_payload.local_head_length);
@@ -899,7 +902,7 @@ bool Server::handlePushCheckRequest(int client_socket, shared_ptr<ClientSession>
 	// 如果需要更新，在这里验证客户端的提交是否是最新的
 	if (needs_update && !new_commit_id.empty()) {
 		if (!validatePushCommitIsLatest(session->current_repo, commit_parent, remote_head)) {
-			sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, 
+			sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST,
 				"Push rejected: commit is not based on the latest version. Please pull the latest changes first.");
 			return false;
 		}
@@ -1268,7 +1271,7 @@ bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> sessi
 		bool line = log_payload.line != 0;
 
 		// 切换到仓库目录
-		fs::path repo_path = fs::path(config_.root_path) / session->current_repo;
+		fs::path repo_path = fs::path(Config::getInstance().root_path) / session->current_repo;
 		if (!fs::exists(repo_path / ".minigit")) {
 			sendErrorResponse(client_socket, StatusCode::INVALID_REPO, "Repository not found");
 			return false;
@@ -1326,7 +1329,8 @@ bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> sessi
 		auto response = ProtocolMessage::createLogResponse(commits);
 		return NetworkUtils::sendMessage(client_socket, response);
 
-	} catch (const exception& e) {
+	}
+	catch (const exception& e) {
 		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR,
 			"Log failed: " + string(e.what()));
 		return false;
@@ -1343,44 +1347,42 @@ bool Server::handleHeartbeat(int client_socket, shared_ptr<ClientSession> sessio
 
 // ServerCommand实现
 int ServerCommand::parseAndRun(const vector<string>& args) {
-	Server::Config config = parseConfig(args);
+	parseConfig(args);
 
-	if (config.port <= 0 || config.root_path.empty()) {
+	if (Config::getInstance().port <= 0 || Config::getInstance().root_path.empty()) {
 		printUsage();
 		return 1;
 	}
 
-	if (config.password.empty() && config.cert_path.empty()) {
+	if (Config::getInstance().password.empty() && Config::getInstance().cert_path.empty()) {
 		cout << "Warning: No authentication configured. Server will run in insecure mode.\n";
 	}
 
-	Server server(config);
+	Server server;
 	return server.run();
 }
 
-Server::Config ServerCommand::parseConfig(const vector<string>& args) {
-	Server::Config config;
+void ServerCommand::parseConfig(const vector<string>& args) {
 
 	for (size_t i = 0; i < args.size(); ++i) {
 		if (args[i] == "--port" && i + 1 < args.size()) {
-			config.port = stoi(args[i + 1]);
+			Config::getInstance().port = stoi(args[i + 1]);
 			i++;
 		}
 		else if (args[i] == "--root" && i + 1 < args.size()) {
-			config.root_path = args[i + 1];
+			Config::getInstance().root_path = args[i + 1];
 			i++;
 		}
 		else if (args[i] == "--password" && i + 1 < args.size()) {
-			config.password = args[i + 1];
+			Config::getInstance().password = args[i + 1];
 			i++;
 		}
 		else if (args[i] == "--cert" && i + 1 < args.size()) {
-			config.cert_path = args[i + 1];
+			Config::getInstance().cert_path = args[i + 1];
 			i++;
 		}
 	}
 
-	return config;
 }
 
 void ServerCommand::printUsage() {

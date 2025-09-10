@@ -60,6 +60,7 @@ enum class MessageType : uint8_t {
 	// 控制消息
 	HEARTBEAT = 0x60,           // 心跳
 	ERROR_MSG = 0xFF,            // 错误消息
+	NONE = 0x00,
 };
 
 // 状态码定义
@@ -88,7 +89,7 @@ struct MessageHeader {
 	uint32_t payload_size;      // 负载大小
 
 	MessageHeader() : magic(0x4D474954), version(PROTOCOL_VERSION),
-		type(MessageType::HEARTBEAT), flags(0), reserved(0), payload_size(0) {
+		type(MessageType::NONE), flags(0), reserved(0), payload_size(0) {
 	}
 };
 #pragma pack(pop)
@@ -275,7 +276,6 @@ class ProtocolMessage {
 public:
 	MessageHeader header;
 	vector<uint8_t> payload;
-
 	ProtocolMessage() = default;
 	ProtocolMessage(MessageType type, const vector<uint8_t>& data = {});
 
@@ -317,7 +317,7 @@ public:
 	static ProtocolMessage createPullCheckResponse(const string& remote_head, bool has_updates, uint32_t commits_count);
 	static ProtocolMessage createPullCommitData(const string& commit_id, const vector<uint8_t>& commit_data);
 	static ProtocolMessage createPullObjectData(const string& object_id, const vector<uint8_t>& object_data);
-	
+
 	// 新增：日志相关消息
 	static ProtocolMessage createLogRequest(int max_count, bool line);
 	static ProtocolMessage createLogResponse(const vector<pair<string, string>>& commits);
@@ -352,4 +352,28 @@ public:
 private:
 	static const int MAX_RETRY_COUNT = 3;
 	static const int CHUNK_SIZE = 65536; // 64KB
+};
+
+class Config {
+private:
+	Config() {}
+	~Config() {}
+	Config(const Config&) = delete;
+	Config& operator=(const Config&) = delete;
+
+public:
+	static Config& getInstance() {
+		static Config instance;
+		return instance;
+	}
+
+	string server_host = "localhost";
+	int server_port = 8080;
+	string password;
+	string cert_path;
+	string root_path;
+	string public_key;
+	string private_key;
+	int port = 8080;
+	bool use_ssl = false;
 };

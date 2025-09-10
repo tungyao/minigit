@@ -219,13 +219,12 @@ int CommandsRemote::networkPush(const NetworkRemote& remote, const string& passw
 	cout << "Connecting to " << remote.host << ":" << remote.port << "...\n";
 
 	// 创建客户端配置
-	Client::Config config;
-	config.server_host = remote.host;
-	config.server_port = remote.port;
-	config.password = password;
+	Config::getInstance().server_host = remote.host;
+	Config::getInstance().server_port = remote.port;
+	Config::getInstance().password = password;
 
 	// 创建客户端并连接
-	Client client(config);
+	Client client;
 
 	if (!client.connect())
 	{
@@ -263,13 +262,12 @@ int CommandsRemote::networkPull(const NetworkRemote& remote, const string& passw
 	cout << "Connecting to " << remote.host << ":" << remote.port << "...\n";
 
 	// 创建客户端配置
-	Client::Config config;
-	config.server_host = remote.host;
-	config.server_port = remote.port;
-	config.password = password;
+	Config::getInstance().server_host = remote.host;
+	Config::getInstance().server_port = remote.port;
+	Config::getInstance().password = password;
 
 	// 创建客户端并连接
-	Client client(config);
+	Client client;
 
 	if (!client.connect())
 	{
@@ -306,13 +304,12 @@ int CommandsRemote::networkLog(const NetworkRemote& remote, const string& passwo
 	cout << "Connecting to " << remote.host << ":" << remote.port << "...\n";
 
 	// 创建客户端配置
-	Client::Config config;
-	config.server_host = remote.host;
-	config.server_port = remote.port;
-	config.password = password;
+	Config::getInstance().server_host = remote.host;
+	Config::getInstance().server_port = remote.port;
+	Config::getInstance().password = password;
 
 	// 创建客户端并连接
-	Client client(config);
+	Client client;
 
 	if (!client.connect())
 	{

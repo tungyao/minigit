@@ -44,7 +44,7 @@
 #endif
 
 // 构造函数
-Client::Client(const Config& config) : config_(config), connected_(false), authenticated_(false) {
+Client::Client() : connected_(false), authenticated_(false) {
 #ifdef _WIN32
 	client_socket_ = INVALID_SOCKET;
 #else
@@ -72,7 +72,7 @@ bool Client::connect() {
 	}
 
 	connected_ = true;
-	cout << "Connected to " << config_.server_host << ":" << config_.server_port << "\n";
+	cout << "Connected to " << Config::getInstance().server_host << ":" << Config::getInstance().server_port << "\n";
 
 	return true;
 }
@@ -107,16 +107,16 @@ bool Client::authenticate() {
 	vector<uint8_t> auth_data;
 	bool use_rsa = false;
 
-	if (!config_.password.empty()) {
-		auth_data = Crypto::stringToBytes(config_.password);
-		cout << "Debug: Client sending password: '" << config_.password << "'" << endl;
-		cout << "Debug: Password length: " << config_.password.length() << endl;
+	if (!Config::getInstance().password.empty()) {
+		auth_data = Crypto::stringToBytes(Config::getInstance().password);
+		cout << "Debug: Client sending password: '" << Config::getInstance().password << "'" << endl;
+		cout << "Debug: Password length: " << Config::getInstance().password.length() << endl;
 		cout << "Debug: Auth data size: " << auth_data.size() << endl;
 	}
-	else if (!config_.cert_path.empty()) {
+	else if (!Config::getInstance().cert_path.empty()) {
 		use_rsa = true;
 		// 加载证书数据
-		auto keypair = Crypto::loadRSAKeyPair(config_.cert_path);
+		auto keypair = Crypto::loadRSAKeyPair(Config::getInstance().cert_path);
 		auth_data = Crypto::stringToBytes(keypair.public_key);
 	}
 	else {
@@ -887,7 +887,7 @@ bool Client::createConnection() {
 	hints.ai_socktype = SOCK_STREAM;
 
 	// 获取服务器地址信息
-	status = getaddrinfo(config_.server_host.c_str(), std::to_string(config_.server_port).c_str(), &hints, &res);
+	status = getaddrinfo(Config::getInstance().server_host.c_str(), std::to_string(Config::getInstance().server_port).c_str(), &hints, &res);
 	if (status != 0) {
 		std::cerr << "getaddrinfo failed: " << gai_strerror(status) << std::endl;
 		return false;
@@ -985,7 +985,9 @@ bool Client::performNetworkOperation(Operation operation, const string& operatio
 
 		// 操作失败，检查是否是连接问题
 		if (!NetworkUtils::isSocketConnected(client_socket_)) {
+#ifdef DEBUG
 			cout << operation_name << " failed due to connection issue, retrying (" << attempt << "/" << max_retries << ")...\n";
+#endif // DEBUG
 			connected_ = false;
 			authenticated_ = false;
 
@@ -1066,7 +1068,7 @@ bool Client::processInteractiveCommand(const string& command, const vector<strin
 		return clone(args[0]);
 	}
 	else if (command == "status") {
-		cout << "Connected to: " << config_.server_host << ":" << config_.server_port << "\n";
+		cout << "Connected to: " << Config::getInstance().server_host << ":" << Config::getInstance().server_port << "\n";
 		cout << "Current repository: " << (current_repo_.empty() ? "(none)" : current_repo_) << "\n";
 		return true;
 	}
@@ -1311,35 +1313,33 @@ bool Client::processCloneFile(const fs::path& local_repo_path, const ProtocolMes
 
 // ClientCommand实现
 int ClientCommand::parseAndRun(const vector<string>& args) {
-	Client::Config config = parseConfig(args);
+	parseConfig(args);
 
-	Client client(config);
+	Client client;
 	return client.runInteractive();
 }
 
-Client::Config ClientCommand::parseConfig(const vector<string>& args) {
-	Client::Config config;
+void ClientCommand::parseConfig(const vector<string>& args) {
 
 	for (size_t i = 0; i < args.size(); ++i) {
 		if (args[i] == "--host" && i + 1 < args.size()) {
-			config.server_host = args[i + 1];
+			Config::getInstance().server_host = args[i + 1];
 			i++;
 		}
 		else if (args[i] == "--port" && i + 1 < args.size()) {
-			config.server_port = stoi(args[i + 1]);
+			Config::getInstance().server_port = stoi(args[i + 1]);
 			i++;
 		}
 		else if (args[i] == "--password" && i + 1 < args.size()) {
-			config.password = args[i + 1];
+			Config::getInstance().password = args[i + 1];
 			i++;
 		}
 		else if (args[i] == "--cert" && i + 1 < args.size()) {
-			config.cert_path = args[i + 1];
+			Config::getInstance().cert_path = args[i + 1];
 			i++;
 		}
 	}
 
-	return config;
 }
 
 void ClientCommand::printUsage() {
@@ -1386,14 +1386,13 @@ int CloneCommand::parseAndRun(const vector<string>& args) {
 	}
 
 	// 创建客户端配置
-	Client::Config config;
-	config.server_host = target.host;
-	config.server_port = target.port;
-	config.password = target.password;
-	config.cert_path = target.cert_path;
+	Config::getInstance().server_host = target.host;
+	Config::getInstance().server_port = target.port;
+	Config::getInstance().password = target.password;
+	Config::getInstance().cert_path = target.cert_path;
 
 	// 执行克隆操作
-	Client client(config);
+	Client client;
 
 	cout << "Connecting to " << target.host << ":" << target.port << "...\n";
 	if (!client.connect()) {
@@ -1466,7 +1465,7 @@ void Client::setRemoteConfigForClone(const fs::path& local_repo_path, const stri
 		fs::create_directories(config_file.parent_path());
 
 		// 构建远程地址：server://host:port/repo
-		string remote_url = "server://" + config_.server_host + ":" + to_string(config_.server_port) + "/" + repo_name;
+		string remote_url = "server://" + Config::getInstance().server_host + ":" + to_string(Config::getInstance().server_port) + "/" + repo_name;
 
 		// 写入config文件
 		ofstream config(config_file);

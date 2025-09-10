@@ -18,6 +18,7 @@
 #include <sys/time.h>
 #endif
 #include <client.h>
+#include <crypto.h>
 
 // 构造函数
 ProtocolMessage::ProtocolMessage(MessageType type, const vector<uint8_t>& data) {
@@ -28,7 +29,6 @@ ProtocolMessage::ProtocolMessage(MessageType type, const vector<uint8_t>& data) 
 // 序列化为字节流
 vector<uint8_t> ProtocolMessage::serialize() const {
 	vector<uint8_t> result;
-	result.reserve(sizeof(MessageHeader) + payload.size());
 
 	// 序列化消息头
 	const uint8_t* header_ptr = reinterpret_cast<const uint8_t*>(&header);
@@ -66,7 +66,10 @@ bool ProtocolMessage::deserialize(const vector<uint8_t>& data, ProtocolMessage& 
 			data.begin() + sizeof(MessageHeader),
 			data.begin() + sizeof(MessageHeader) + msg.header.payload_size);
 	}
-
+	Crypto cp;
+	vector<uint8_t> enc_data = cp.decryptAES(msg.payload);
+	msg.header.payload_size = enc_data.size();
+	msg.payload = enc_data;
 	return true;
 }
 
@@ -77,8 +80,10 @@ bool ProtocolMessage::validateHeader() const {
 
 // 设置负载数据
 void ProtocolMessage::setPayload(const vector<uint8_t>& data) {
-	payload = data;
-	header.payload_size = static_cast<uint32_t>(payload.size());
+	Crypto cp;
+	vector<uint8_t> enc_data = cp.encryptAES(data);
+	payload = enc_data;
+	header.payload_size = static_cast<uint32_t>(enc_data.size());
 }
 
 void ProtocolMessage::setStringPayload(const string& str) {
@@ -470,6 +475,9 @@ uint32_t ProtocolMessage::calculateCRC32(const vector<uint8_t>& data) {
 // 发送完整消息
 bool NetworkUtils::sendMessage(int socket, const ProtocolMessage& msg) {
 	vector<uint8_t> data = msg.serialize();
+#ifdef DEBUG
+	cout << "send msg size " << data.size() << endl;
+#endif // DEBUG
 	return sendData(socket, data.data(), data.size());
 }
 
@@ -503,7 +511,6 @@ bool NetworkUtils::receiveMessage(int socket, ProtocolMessage& msg) {
 	full_data.insert(full_data.end(), reinterpret_cast<const uint8_t*>(&header),
 		reinterpret_cast<const uint8_t*>(&header) + sizeof(MessageHeader));
 	full_data.insert(full_data.end(), payload.begin(), payload.end());
-	//ProtocolMessage::deserialize(full_data, msg);
 	return ProtocolMessage::deserialize(full_data, msg);
 }
 
@@ -555,9 +562,12 @@ bool NetworkUtils::receiveData(int socket, void* buffer, size_t size) {
 
 	while (remaining > 0) {
 		size_t chunk_size = min(remaining, static_cast<size_t>(CHUNK_SIZE));
-
+		int get_size = static_cast<int>(chunk_size);
+#ifdef DEBUG
+		cout << "ready to get size " << get_size << endl;
+#endif // DEBUG
 #ifdef _WIN32
-		int received = recv(socket, ptr, static_cast<int>(chunk_size), 0);
+		int received = recv(socket, ptr, get_size, 0);
 		if (received == SOCKET_ERROR) {
 			int error = WSAGetLastError();
 			if (error == WSAEWOULDBLOCK && retry_count < MAX_RETRY_COUNT) {

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(MiniGit
     VERSION 1.0.0
     DESCRIPTION "A tiny git-like tool supporting init, add, commit, push, pull, reset"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 # 设置C++标准
@@ -43,18 +43,19 @@ else()
 endif()
 
 # 查找OpenSSL库（用于加密）
-find_package(OpenSSL)
-if(OpenSSL_FOUND)
-    message(STATUS "Found OpenSSL: ${OPENSSL_VERSION}")
-    set(CRYPTO_LIBS OpenSSL::SSL OpenSSL::Crypto)
-    add_definitions(-DHAVE_OPENSSL)
-else()
-    message(STATUS "OpenSSL not found, using built-in crypto implementations")
-    set(CRYPTO_LIBS)
-endif()
+#find_package(OpenSSL)
+#if(OpenSSL_FOUND)
+#    message(STATUS "Found OpenSSL: ${OPENSSL_VERSION}")
+#    set(CRYPTO_LIBS OpenSSL::SSL OpenSSL::Crypto)
+#    add_definitions(-DHAVE_OPENSSL)
+#else()
+#    message(STATUS "OpenSSL not found, using built-in crypto implementations")
+#    set(CRYPTO_LIBS)
+#endif()
 
 # 收集源文件
 set(SOURCES
+    src/aes.c
     src/main.cpp
     src/sha256.cpp
     src/filesystem_utils.cpp
@@ -73,6 +74,8 @@ set(SOURCES
 
 # 收集头文件
 set(HEADERS
+    src/aes.h
+    src/aes.hpp
     src/common.h
     src/sha256.h
     src/filesystem_utils.h
@@ -103,10 +106,10 @@ set_target_properties(minigit PROPERTIES
 # 链接必要的库
 if(WIN32)
     # Windows下需要的库
-    target_link_libraries(minigit ${NETWORK_LIBS} ${CRYPTO_LIBS})
+    target_link_libraries(minigit ${NETWORK_LIBS})
 else()
     # Linux下需要的库
-    target_link_libraries(minigit Threads::Threads ${NETWORK_LIBS} ${CRYPTO_LIBS})
+    target_link_libraries(minigit Threads::Threads ${NETWORK_LIBS})
 endif()
 
 # 安装规则（可选）
