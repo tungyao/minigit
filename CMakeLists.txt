@@ -149,7 +149,7 @@ if(WIN32)
     target_link_libraries(minigit ${NETWORK_LIBS} zlibstatic)
 else()
     # Linux下需要的库
-    target_link_libraries(minigit Threads::Threads ${NETWORK_LIBS})
+    target_link_libraries(minigit Threads::Threads ${NETWORK_LIBS} zlibstatic)
 endif()
 
 # 安装规则（可选）
