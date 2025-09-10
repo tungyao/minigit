@@ -18,13 +18,13 @@ string CommitManager::nowISO8601() {
 string CommitManager::serializeCommit(const Commit &c) {
     // naive JSON (no escaping for simplicity)
     string s = "{\n";
-    s += "  \"parent\": \"" + c.parent + "\",\n";
-    s += "  \"message\": \"" + c.message + "\",\n";
-    s += "  \"timestamp\": \"" + c.timestamp + "\",\n";
-    s += "  \"tree\": {\n";
-    bool first = true;
-    for (auto &kv : c.tree) {
-        s += string("    ") + "\"" + kv.first + "\": \"" + kv.second + "\",\n";
+    s += R"(  "parent": ")" + c.parent + "\",\n";
+    s += R"(  "message": ")" + c.message + "\",\n";
+    s += R"(  "timestamp": ")" + c.timestamp + "\",\n";
+    s += R"(  "tree": {\n)";
+    // bool first = true;
+    for (const auto &[fst, snd] : c.tree) {
+        s += string("    ") + "\"" + fst + "\": \"" + snd + "\",\n";
     }
     if (!c.tree.empty())
         s.pop_back(), s.pop_back(), s += "\n"; // remove last comma

@@ -1,4 +1,7 @@
 #include "protocol.h"
+
+#include <cstring>
+
 #include "sha256.h"
 
 #ifdef _WIN32
@@ -11,7 +14,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <errno.h>
+#include <cerrno>
 #include <sys/time.h>
 #endif
 #include <client.h>

@@ -1,4 +1,7 @@
 #include "client.h"
+
+#include <cstring>
+
 #include "crypto.h"
 #include "commit.h"
 #include <iostream>
@@ -143,7 +146,7 @@ bool Client::authenticate() {
 		return false;
 	}
 
-	AuthResponsePayload auth_response;
+	AuthResponsePayload auth_response{};
 	memcpy(&auth_response, response.payload.data(), sizeof(AuthResponsePayload));
 
 	if (auth_response.status == StatusCode::SUCCESS) {

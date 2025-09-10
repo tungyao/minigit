@@ -8,6 +8,7 @@
 #include <map>
 #include <set>
 #include <chrono>
+#include <cstring>
 #include <mutex>
 #include <memory>
 
