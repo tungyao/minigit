@@ -78,6 +78,10 @@ private:
     void sendErrorResponse(int client_socket, StatusCode status, const string& message);
     bool sendCloneFile(int client_socket, const string& relative_path, const fs::path& file_path);
     
+    // 加密通信辅助方法
+    bool sendMessage(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+    bool receiveMessage(int client_socket, shared_ptr<class ClientSession> session, ProtocolMessage& msg);
+    
     // Push验证方法
     bool validatePushCommitIsLatest(const string& repo_name, const string& client_commit_parent, const string& current_remote_head);
 

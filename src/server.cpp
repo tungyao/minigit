@@ -42,8 +42,12 @@ public:
 	string current_repo;
 	chrono::time_point<chrono::steady_clock> last_activity;
 	int socket;
+	
+	// 加密相关
+	Crypto::SymmetricKey session_key;
+	bool encryption_enabled;
 
-	ClientSession(int sock) : socket(sock), authenticated(false) {
+	ClientSession(int sock) : socket(sock), authenticated(false), encryption_enabled(false) {
 		session_id = generateSessionId();
 		last_activity = chrono::steady_clock::now();
 	}
@@ -377,6 +381,24 @@ bool Server::validatePushCommitIsLatest(const string& repo_name, const string& c
 	return false;
 }
 
+// 加密发送消息
+bool Server::sendMessage(int client_socket, shared_ptr<ClientSession> session, const ProtocolMessage& msg) {
+	if (session->encryption_enabled && session->authenticated) {
+		return NetworkUtils::sendEncryptedMessage(client_socket, msg, session->session_key);
+	} else {
+		return NetworkUtils::sendMessage(client_socket, msg);
+	}
+}
+
+// 加密接收消息
+bool Server::receiveMessage(int client_socket, shared_ptr<ClientSession> session, ProtocolMessage& msg) {
+	if (session->encryption_enabled && session->authenticated) {
+		return NetworkUtils::receiveEncryptedMessage(client_socket, msg, session->session_key);
+	} else {
+		return NetworkUtils::receiveMessage(client_socket, msg);
+	}
+}
+
 // 处理客户端连接
 void Server::handleClient(int client_socket) {
 	auto session = make_shared<ClientSession>(client_socket);
@@ -392,7 +414,7 @@ void Server::handleClient(int client_socket) {
 		// 主消息处理循环
 		while (running_ && NetworkUtils::isSocketConnected(client_socket)) {
 			ProtocolMessage msg;
-			if (!NetworkUtils::receiveMessage(client_socket, msg)) {
+			if (!receiveMessage(client_socket, session, msg)) {
 				break;
 			}
 
@@ -571,6 +593,19 @@ bool Server::handleAuthRequest(int client_socket, shared_ptr<ClientSession> sess
 
 	if (auth_success) {
 		session->authenticated = true;
+		
+		// 建立加密会话（当使用密码认证时）
+		if (auth_payload.auth_type == 0 && !config_.password.empty()) {
+			session->session_key = Crypto::generateKeyFromPassword(config_.password);
+			session->encryption_enabled = Crypto::isKeyValid(session->session_key);
+			if (session->encryption_enabled) {
+				cout << "Authentication successful - encryption enabled for session\n";
+			} else {
+				cout << "Authentication successful - encryption setup failed\n";
+			}
+		} else {
+			cout << "Authentication successful - no encryption (not password auth)\n";
+		}
 	}
 
 	auto response = ProtocolMessage::createAuthResponse(status, session->session_id, timeout);

@@ -586,14 +586,14 @@ bool Client::push() {
 
 	// 发送推送请求（通知服务器更新HEAD）
 	auto push_request = ProtocolMessage::createPushRequest(last_commit_id);
-	if (!NetworkUtils::sendMessage(client_socket_, push_request)) {
+	if (!sendMessage(push_request)) {
 		cerr << "Failed to send push request\n";
 		return false;
 	}
 
 	// 接收推送响应
 	ProtocolMessage push_response;
-	if (!NetworkUtils::receiveMessage(client_socket_, push_response)) {
+	if (!receiveMessage(push_response)) {
 		cerr << "Failed to receive push response\n";
 		return false;
 	}
@@ -641,14 +641,14 @@ bool Client::pull() {
 
 	// 发送pull检查请求
 	auto check_request = ProtocolMessage::createPullCheckRequest(local_head);
-	if (!NetworkUtils::sendMessage(client_socket_, check_request)) {
+	if (!sendMessage(check_request)) {
 		cerr << "Failed to send pull check request\n";
 		return false;
 	}
 
 	// 接收pull检查响应
 	ProtocolMessage check_response;
-	if (!NetworkUtils::receiveMessage(client_socket_, check_response)) {
+	if (!receiveMessage(check_response)) {
 		cerr << "Failed to receive pull check response\n";
 		return false;
 	}
@@ -697,7 +697,7 @@ bool Client::pull() {
 	for (uint32_t i = 0; i < check_payload.commits_count; i++) {
 		// 接收提交数据
 		ProtocolMessage commit_msg;
-		if (!NetworkUtils::receiveMessage(client_socket_, commit_msg)) {
+		if (!receiveMessage(commit_msg)) {
 			cerr << "Failed to receive commit data\n";
 			return false;
 		}
@@ -720,7 +720,7 @@ bool Client::pull() {
 		// 接收该提交的所有对象
 		while (true) {
 			ProtocolMessage obj_msg;
-			if (!NetworkUtils::receiveMessage(client_socket_, obj_msg)) {
+			if (!receiveMessage(obj_msg)) {
 				cerr << "Failed to receive message\n";
 				return false;
 			}
@@ -756,7 +756,7 @@ bool Client::pull() {
 	}
 
 	// 接收最后的拉取响应
-	if (!NetworkUtils::receiveMessage(client_socket_, pull_response)) {
+	if (!receiveMessage(pull_response)) {
 		cerr << "Failed to receive pull response\n";
 		return false;
 	}
@@ -809,7 +809,7 @@ bool Client::clone(const string& repo_name) {
 	}
 
 	auto request = ProtocolMessage::createStringMessage(MessageType::CLONE_REQUEST, repo_name);
-	if (!NetworkUtils::sendMessage(client_socket_, request)) {
+	if (!sendMessage(request)) {
 		cerr << "Failed to send clone request\n";
 		return false;
 	}
@@ -1023,7 +1023,7 @@ bool Client::performNetworkOperation(Operation operation, const string& operatio
 // 发送心跳
 bool Client::sendHeartbeat() {
 	auto heartbeat = ProtocolMessage(MessageType::HEARTBEAT);
-	return NetworkUtils::sendMessage(client_socket_, heartbeat);
+	return sendMessage(heartbeat);
 }
 
 // 处理交互式命令
@@ -1162,7 +1162,7 @@ bool Client::receiveCloneData(const string& repo_name) {
 	try {
 		// 先接收克隆开始消息
 		ProtocolMessage start_msg;
-		if (!NetworkUtils::receiveMessage(client_socket_, start_msg)) {
+		if (!receiveMessage(start_msg)) {
 			cerr << "Failed to receive clone start message\n";
 			return false;
 		}
@@ -1194,7 +1194,7 @@ bool Client::receiveCloneData(const string& repo_name) {
 		uint32_t files_received = 0;
 		while (files_received < start_payload.total_files) {
 			ProtocolMessage file_msg;
-			if (!NetworkUtils::receiveMessage(client_socket_, file_msg)) {
+			if (!receiveMessage(file_msg)) {
 				cerr << "Failed to receive file message\n";
 				return false;
 			}
@@ -1223,7 +1223,7 @@ bool Client::receiveCloneData(const string& repo_name) {
 
 		// 接收结束消息
 		ProtocolMessage end_msg;
-		if (!NetworkUtils::receiveMessage(client_socket_, end_msg)) {
+		if (!receiveMessage(end_msg)) {
 			cerr << "\nFailed to receive clone end message\n";
 			return false;
 		}
@@ -1240,7 +1240,7 @@ bool Client::receiveCloneData(const string& repo_name) {
 
 		// 最后接收响应消息
 		ProtocolMessage response;
-		if (!NetworkUtils::receiveMessage(client_socket_, response)) {
+		if (!receiveMessage(response)) {
 			cerr << "\nFailed to receive clone response\n";
 			return false;
 		}
@@ -1569,7 +1569,7 @@ bool Client::uploadCommit(const string& commit_id) {
 
 	// 创建并发送commit数据消息
 	auto commit_msg = ProtocolMessage::createPushCommitData(commit_id, commit_data);
-	if (!NetworkUtils::sendMessage(client_socket_, commit_msg)) {
+	if (!sendMessage(commit_msg)) {
 		cerr << "Failed to send commit data for " << commit_id << "\n";
 		return false;
 	}
@@ -1597,7 +1597,7 @@ bool Client::uploadObject(const string& object_id) {
 
 	// 创建并发送对象数据消息
 	auto object_msg = ProtocolMessage::createPushObjectData(object_id, object_data);
-	if (!NetworkUtils::sendMessage(client_socket_, object_msg)) {
+	if (!sendMessage(object_msg)) {
 		cerr << "Failed to send object data for " << object_id << "\n";
 		return false;
 	}
