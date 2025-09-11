@@ -1281,7 +1281,7 @@ bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> sessi
 		vector<pair<string, string>> commits; // commit_id, message pairs
 
 		// 获取当前HEAD
-		fs::path head_path = repo_path / ".minigit" / "HEAD";
+		fs::path head_path = ".minigit/HEAD";  // 相对路径，因为我们已经在repo目录了
 		if (!fs::exists(head_path)) {
 			// 没有提交历史
 			fs::current_path(original_cwd);
@@ -1308,33 +1308,14 @@ bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> sessi
 		int count = 0;
 
 		while (!commit_id.empty() && (max_count == -1 || count < max_count)) {
-			// 读取提交对象
-			fs::path commit_path = repo_path / ".minigit" / "objects" / commit_id;
-			if (!fs::exists(commit_path)) {
+			// 使用CommitManager加载提交对象
+			auto commit_opt = CommitManager::loadCommit(commit_id);
+			if (!commit_opt) {
 				break;
 			}
 
-			ifstream commit_file(commit_path);
-			if (!commit_file.is_open()) {
-				break;
-			}
-
-			string line;
-			string message;
-			string parent_id;
-
-			// 解析提交对象格式
-			while (getline(commit_file, line)) {
-				if (line.substr(0, 8) == "message:") {
-					message = line.substr(8);
-				} else if (line.substr(0, 7) == "parent:") {
-					parent_id = line.substr(7);
-				}
-			}
-			commit_file.close();
-
-			commits.push_back(make_pair(commit_id, message));
-			commit_id = parent_id;
+			commits.push_back(make_pair(commit_id, commit_opt->message));
+			commit_id = commit_opt->parent;
 			count++;
 		}
 
