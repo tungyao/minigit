@@ -62,6 +62,9 @@ set(SOURCES
     src/objects.cpp
     src/commit.cpp
     src/commands.cpp
+    src/commands_basic.cpp
+    src/commands_history.cpp
+    src/commands_remote.cpp
     src/server.cpp
     src/crypto.cpp
     src/protocol.cpp
@@ -77,6 +80,9 @@ set(HEADERS
     src/objects.h
     src/commit.h
     src/commands.h
+    src/commands_basic.h
+    src/commands_history.h
+    src/commands_remote.h
     src/server.h
     src/crypto.h
     src/protocol.h
