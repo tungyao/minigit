@@ -48,7 +48,14 @@ public:
     // 哈希函数
     static string sha256Hash(const string& data);
     
+    // 加密会话管理
+    static SymmetricKey generateSessionKey();
+    static bool isKeyValid(const SymmetricKey& key);
+    
 private:
     // PBKDF2密钥派生
     static vector<uint8_t> pbkdf2(const string& password, const vector<uint8_t>& salt, int iterations, size_t key_length);
+    
+    // PBKDF2简化实现（回退方案）
+    static vector<uint8_t> pbkdf2Fallback(const string& password, const vector<uint8_t>& salt, int iterations, size_t key_length);
 };

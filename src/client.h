@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "protocol.h"
+#include "crypto.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -74,6 +75,10 @@ private:
     bool authenticated_;
     string current_repo_;
     
+    // 加密相关
+    Crypto::SymmetricKey session_key_;
+    bool encryption_enabled_;
+    
     // 重连参数
     int max_retry_attempts_ = 3;
     int retry_delay_ms_ = 1000;
@@ -97,6 +102,10 @@ private:
     // 带重试的网络操作包装器
     template<typename Operation>
     bool performNetworkOperation(Operation operation, const string& operation_name, int max_retries = 2);
+    
+    // 加密通信辅助方法
+    bool sendMessage(const ProtocolMessage& msg);
+    bool receiveMessage(ProtocolMessage& msg);
     
     // 处理交互式命令
     bool processInteractiveCommand(const string& command, const vector<string>& args);

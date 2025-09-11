@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include "crypto.h"
 
 /**
  * MiniGit二进制通信协议定义
@@ -328,28 +329,35 @@ public:
 
 /**
  * 网络传输工具类
+ * 支持加密通信
  */
 class NetworkUtils {
 public:
-	// 发送完整消息
-	static bool sendMessage(int socket, const ProtocolMessage& msg);
+    // 发送完整消息
+    static bool sendMessage(int socket, const ProtocolMessage& msg);
+    
+    // 接收完整消息
+    static bool receiveMessage(int socket, ProtocolMessage& msg);
+    
+    // 加密发送消息
+    static bool sendEncryptedMessage(int socket, const ProtocolMessage& msg, const Crypto::SymmetricKey& key);
+    
+    // 加密接收消息
+    static bool receiveEncryptedMessage(int socket, ProtocolMessage& msg, const Crypto::SymmetricKey& key);
 
-	// 接收完整消息
-	static bool receiveMessage(int socket, ProtocolMessage& msg);
+    // 发送原始数据
+    static bool sendData(int socket, const void* data, size_t size);
 
-	// 发送原始数据
-	static bool sendData(int socket, const void* data, size_t size);
+    // 接收原始数据
+    static bool receiveData(int socket, void* buffer, size_t size);
 
-	// 接收原始数据
-	static bool receiveData(int socket, void* buffer, size_t size);
+    // 设置socket超时
+    static bool setSocketTimeout(int socket, int timeout_seconds);
 
-	// 设置socket超时
-	static bool setSocketTimeout(int socket, int timeout_seconds);
-
-	// 检查socket状态
-	static bool isSocketConnected(int socket);
+    // 检查socket状态
+    static bool isSocketConnected(int socket);
 
 private:
-	static const int MAX_RETRY_COUNT = 3;
-	static const int CHUNK_SIZE = 65536; // 64KB
+    static const int MAX_RETRY_COUNT = 3;
+    static const int CHUNK_SIZE = 65536; // 64KB
 };

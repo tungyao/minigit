@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "sha256.h"
+#include "crypto.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -613,10 +614,53 @@ bool NetworkUtils::isSocketConnected(int socket) {
 #ifdef _WIN32
 	//int result = recv(socket, buffer, 1, MSG_PEEK);
 	auto heartbeat = ProtocolMessage(MessageType::HEARTBEAT);
-	return NetworkUtils::sendMessage(socket, heartbeat);;
+	return NetworkUtils::sendMessage(socket, heartbeat);
 #else
 	char buffer[1];
 	ssize_t result = recv(socket, buffer, 1, MSG_PEEK | MSG_DONTWAIT);
 	return result >= 0 || (errno == EAGAIN || errno == EWOULDBLOCK);
 #endif
+}
+
+// 加密发送消息
+bool NetworkUtils::sendEncryptedMessage(int socket, const ProtocolMessage& msg, const Crypto::SymmetricKey& key) {
+    // 首先序列化消息
+    vector<uint8_t> data = msg.serialize();
+    
+    // 加密消息内容（只加密负载部分，保留消息头以便接收方识别）
+    if (msg.header.payload_size > 0) {
+        vector<uint8_t> payload(data.begin() + sizeof(MessageHeader), data.end());
+        vector<uint8_t> encrypted_payload = Crypto::encryptAES(payload, key);
+        
+        // 创建新的消息，包含加密后的负载
+        ProtocolMessage encrypted_msg;
+        encrypted_msg.header = msg.header;
+        encrypted_msg.header.payload_size = static_cast<uint32_t>(encrypted_payload.size());
+        encrypted_msg.payload = encrypted_payload;
+        
+        return sendMessage(socket, encrypted_msg);
+    } else {
+        // 如果没有负载，直接发送原消息
+        return sendMessage(socket, msg);
+    }
+}
+
+// 加密接收消息
+bool NetworkUtils::receiveEncryptedMessage(int socket, ProtocolMessage& msg, const Crypto::SymmetricKey& key) {
+    // 首先接收消息
+    if (!receiveMessage(socket, msg)) {
+        return false;
+    }
+    
+    // 如果有负载，则解密
+    if (msg.header.payload_size > 0) {
+        vector<uint8_t> decrypted_payload = Crypto::decryptAES(msg.payload, key);
+        if (decrypted_payload.empty()) {
+            return false; // 解密失败
+        }
+        msg.payload = decrypted_payload;
+        msg.header.payload_size = static_cast<uint32_t>(decrypted_payload.size());
+    }
+    
+    return true;
 }

@@ -44,7 +44,7 @@
 #endif
 
 // 构造函数
-Client::Client(const Config& config) : config_(config), connected_(false), authenticated_(false) {
+Client::Client(const Config& config) : config_(config), connected_(false), authenticated_(false), encryption_enabled_(false) {
 #ifdef _WIN32
 	client_socket_ = INVALID_SOCKET;
 #else
@@ -153,7 +153,20 @@ bool Client::authenticate() {
 
 	if (auth_response.status == StatusCode::SUCCESS) {
 		authenticated_ = true;
-		cout << "Authentication successful\n";
+		
+		// 建立加密会话 - 从密码生成对称密钥
+		if (!config_.password.empty()) {
+			session_key_ = Crypto::generateKeyFromPassword(config_.password);
+			encryption_enabled_ = Crypto::isKeyValid(session_key_);
+			if (encryption_enabled_) {
+				cout << "Authentication successful - encryption enabled\n";
+			} else {
+				cout << "Authentication successful - encryption setup failed\n";
+			}
+		} else {
+			cout << "Authentication successful - no encryption (no password)\n";
+		}
+		
 		return true;
 	}
 	else {
@@ -175,14 +188,14 @@ bool Client::login() {
 	}
 
 	auto login_request = ProtocolMessage(MessageType::LOGIN_REQUEST);
-	if (!NetworkUtils::sendMessage(client_socket_, login_request)) {
+	if (!sendMessage(login_request)) {
 		cerr << "Failed to send login request\n";
 		connected_ = false;
 		return false;
 	}
 
 	ProtocolMessage response;
-	if (!NetworkUtils::receiveMessage(client_socket_, response)) {
+	if (!receiveMessage(response)) {
 		cerr << "Failed to receive login response\n";
 		connected_ = false;
 		return false;
@@ -213,13 +226,13 @@ vector<string> Client::listRepositories() {
 	}
 
 	auto request = ProtocolMessage(MessageType::LIST_REPOS_REQUEST);
-	if (!NetworkUtils::sendMessage(client_socket_, request)) {
+	if (!sendMessage(request)) {
 		cerr << "Failed to send list repositories request\n";
 		return repos;
 	}
 
 	ProtocolMessage response;
-	if (!NetworkUtils::receiveMessage(client_socket_, response)) {
+	if (!receiveMessage(response)) {
 		cerr << "Failed to receive list repositories response\n";
 		return repos;
 	}
@@ -270,13 +283,13 @@ vector<string> Client::log(int max_count, bool line) {
 	}
 
 	auto request = ProtocolMessage::createLogRequest(max_count, line);
-	if (!NetworkUtils::sendMessage(client_socket_, request)) {
+	if (!sendMessage(request)) {
 		cerr << "Failed to send log request\n";
 		return log_entries;
 	}
 
 	ProtocolMessage response;
-	if (!NetworkUtils::receiveMessage(client_socket_, response)) {
+	if (!receiveMessage(response)) {
 		cerr << "Failed to receive log response\n";
 		return log_entries;
 	}
@@ -347,13 +360,13 @@ bool Client::useRepository(const string& repo_name) {
 	}
 
 	auto request = ProtocolMessage::createStringMessage(MessageType::USE_REPO_REQUEST, repo_name);
-	if (!NetworkUtils::sendMessage(client_socket_, request)) {
+	if (!sendMessage(request)) {
 		cerr << "Failed to send use repository request\n";
 		return false;
 	}
 
 	ProtocolMessage response;
-	if (!NetworkUtils::receiveMessage(client_socket_, response)) {
+	if (!receiveMessage(response)) {
 		cerr << "Failed to receive use repository response\n";
 		return false;
 	}
@@ -384,13 +397,13 @@ bool Client::createRepository(const string& repo_name) {
 	}
 
 	auto request = ProtocolMessage::createStringMessage(MessageType::CREATE_REPO_REQUEST, repo_name);
-	if (!NetworkUtils::sendMessage(client_socket_, request)) {
+	if (!sendMessage(request)) {
 		cerr << "Failed to send create repository request\n";
 		return false;
 	}
 
 	ProtocolMessage response;
-	if (!NetworkUtils::receiveMessage(client_socket_, response)) {
+	if (!receiveMessage(response)) {
 		cerr << "Failed to receive create repository response\n";
 		return false;
 	}
@@ -420,13 +433,13 @@ bool Client::removeRepository(const string& repo_name) {
 	}
 
 	auto request = ProtocolMessage::createStringMessage(MessageType::REMOVE_REPO_REQUEST, repo_name);
-	if (!NetworkUtils::sendMessage(client_socket_, request)) {
+	if (!sendMessage(request)) {
 		cerr << "Failed to send remove repository request\n";
 		return false;
 	}
 
 	ProtocolMessage response;
-	if (!NetworkUtils::receiveMessage(client_socket_, response)) {
+	if (!receiveMessage(response)) {
 		cerr << "Failed to receive remove repository response\n";
 		return false;
 	}
@@ -487,14 +500,14 @@ bool Client::push() {
 
 	// 发送push检查请求，包含将要推送的commit信息
 	auto check_request = ProtocolMessage::createPushCheckRequest(local_head, new_commit_id, commit_parent);
-	if (!NetworkUtils::sendMessage(client_socket_, check_request)) {
+	if (!sendMessage(check_request)) {
 		cerr << "Failed to send push check request\n";
 		return false;
 	}
 
 	// 接收push检查响应
 	ProtocolMessage check_response;
-	if (!NetworkUtils::receiveMessage(client_socket_, check_response)) {
+	if (!receiveMessage(check_response)) {
 		cerr << "Failed to receive push check response\n";
 		return false;
 	}
@@ -1742,4 +1755,22 @@ bool Client::receiveObjectData(const ProtocolMessage& msg) {
 	}
 
 	return true;
+}
+
+// 加密发送消息
+bool Client::sendMessage(const ProtocolMessage& msg) {
+	if (encryption_enabled_ && authenticated_) {
+		return NetworkUtils::sendEncryptedMessage(client_socket_, msg, session_key_);
+	} else {
+		return NetworkUtils::sendMessage(client_socket_, msg);
+	}
+}
+
+// 加密接收消息
+bool Client::receiveMessage(ProtocolMessage& msg) {
+	if (encryption_enabled_ && authenticated_) {
+		return NetworkUtils::receiveEncryptedMessage(client_socket_, msg, session_key_);
+	} else {
+		return NetworkUtils::receiveMessage(client_socket_, msg);
+	}
 }
