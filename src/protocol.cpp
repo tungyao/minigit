@@ -395,6 +395,57 @@ ProtocolMessage ProtocolMessage::createPullObjectData(const string& object_id, c
 	return ProtocolMessage(MessageType::PULL_OBJECT_DATA, data);
 }
 
+// 创建日志请求消息
+ProtocolMessage ProtocolMessage::createLogRequest(int max_count, bool oneline) {
+	LogRequestPayload payload;
+	payload.max_count = static_cast<uint32_t>(max_count);
+	payload.oneline = oneline ? 1 : 0;
+
+	vector<uint8_t> data(sizeof(LogRequestPayload));
+	memcpy(data.data(), &payload, sizeof(LogRequestPayload));
+
+	return ProtocolMessage(MessageType::LOG_REQUEST, data);
+}
+
+// 创建日志响应消息
+ProtocolMessage ProtocolMessage::createLogResponse(const vector<pair<string, string>>& commits) {
+	// 计算总数据大小
+	size_t total_size = sizeof(LogResponsePayload);
+	for (const auto& commit : commits) {
+		total_size += sizeof(uint32_t) + commit.first.size();  // commit_id_length + commit_id
+		total_size += sizeof(uint32_t) + commit.second.size(); // message_length + message
+	}
+	
+	vector<uint8_t> data;
+	data.reserve(total_size);
+	
+	// 写入响应头
+	LogResponsePayload payload;
+	payload.commits_count = static_cast<uint32_t>(commits.size());
+	
+	data.resize(sizeof(LogResponsePayload));
+	memcpy(data.data(), &payload, sizeof(LogResponsePayload));
+	
+	// 写入每个提交的数据
+	for (const auto& commit : commits) {
+		// 写入commit_id_length和commit_id
+		uint32_t commit_id_length = static_cast<uint32_t>(commit.first.size());
+		size_t old_size = data.size();
+		data.resize(old_size + sizeof(uint32_t) + commit.first.size());
+		memcpy(data.data() + old_size, &commit_id_length, sizeof(uint32_t));
+		memcpy(data.data() + old_size + sizeof(uint32_t), commit.first.c_str(), commit.first.size());
+		
+		// 写入message_length和message
+		uint32_t message_length = static_cast<uint32_t>(commit.second.size());
+		old_size = data.size();
+		data.resize(old_size + sizeof(uint32_t) + commit.second.size());
+		memcpy(data.data() + old_size, &message_length, sizeof(uint32_t));
+		memcpy(data.data() + old_size + sizeof(uint32_t), commit.second.c_str(), commit.second.size());
+	}
+
+	return ProtocolMessage(MessageType::LOG_RESPONSE, data);
+}
+
 // CRC32计算（简单实现）
 uint32_t ProtocolMessage::calculateCRC32(const vector<uint8_t>& data) {
 	uint32_t crc = 0xFFFFFFFF;

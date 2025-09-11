@@ -47,6 +47,8 @@ enum class MessageType : uint8_t {
 	PULL_OBJECT_DATA = 0x3D,    // 拉取对象数据
 	CLONE_REQUEST = 0x34,       // 克隆请求
 	CLONE_RESPONSE = 0x35,      // 克隆响应
+	LOG_REQUEST = 0x50,         // 日志请求
+	LOG_RESPONSE = 0x51,        // 日志响应
 
 	// 数据传输
 	FILE_DATA = 0x40,           // 文件数据
@@ -56,7 +58,7 @@ enum class MessageType : uint8_t {
 	CLONE_FILE = 0x44,          // 克隆文件
 
 	// 控制消息
-	HEARTBEAT = 0x50,           // 心跳
+	HEARTBEAT = 0x60,           // 心跳
 	ERROR_MSG = 0xFF            // 错误消息
 };
 
@@ -241,6 +243,30 @@ struct PullObjectDataPayload {
 };
 #pragma pack(pop)
 
+// 日志请求负载
+#pragma pack(push, 1)
+struct LogRequestPayload {
+	uint32_t max_count;      // 最大提交数量 (-1表示不限制)
+	uint8_t oneline;         // 是否单行格式 (1=是，0=否)
+	// 可以扩展其他参数
+};
+#pragma pack(pop)
+
+// 日志响应负载
+#pragma pack(push, 1)
+struct LogResponsePayload {
+	uint32_t commits_count;  // 返回的提交数量
+	// 接下来是提交数据，每个提交包含:
+	// - uint32_t commit_id_length
+	// - commit_id_string
+	// - uint32_t message_length  
+	// - message_string
+	// - uint32_t timestamp
+	// - uint32_t parent_id_length
+	// - parent_id_string
+};
+#pragma pack(pop)
+
 /*
  * 协议消息类
  * 封装消息的序列化和反序列化
@@ -291,6 +317,10 @@ public:
 	static ProtocolMessage createPullCheckResponse(const string& remote_head, bool has_updates, uint32_t commits_count);
 	static ProtocolMessage createPullCommitData(const string& commit_id, const vector<uint8_t>& commit_data);
 	static ProtocolMessage createPullObjectData(const string& object_id, const vector<uint8_t>& object_data);
+	
+	// 新增：日志相关消息
+	static ProtocolMessage createLogRequest(int max_count, bool oneline);
+	static ProtocolMessage createLogResponse(const vector<pair<string, string>>& commits);
 
 	// 工具方法
 	static uint32_t calculateCRC32(const vector<uint8_t>& data);
