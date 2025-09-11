@@ -14,8 +14,9 @@
 Crypto::SymmetricKey Crypto::generateKeyFromPassword(const string& password) {
     SymmetricKey key;
     
-    // 生成随机盐
-    vector<uint8_t> salt = generateRandomBytes(16);
+    // 使用密码的哈希作为固定盐（确保客户端和服务器生成相同的密钥）
+    string salt_str = sha256Hash(password + "salt");
+    vector<uint8_t> salt = stringToBytes(salt_str.substr(0, 16)); // 取前16字节作为盐
     
     // 使用PBKDF2生成密钥和IV
     key.key = pbkdf2(password, salt, 10000, 32);  // AES-256需要32字节密钥

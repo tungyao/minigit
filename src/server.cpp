@@ -620,7 +620,7 @@ bool Server::handleLoginRequest(int client_socket, shared_ptr<ClientSession> ses
 	}
 
 	auto response = ProtocolMessage::createStringMessage(MessageType::LOGIN_RESPONSE, "Login successful");
-	return NetworkUtils::sendMessage(client_socket, response);
+	return sendMessage(client_socket, session, response);
 }
 
 // 列出仓库请求处理
@@ -643,7 +643,7 @@ bool Server::handleListReposRequest(int client_socket, shared_ptr<ClientSession>
 	}
 
 	auto response = ProtocolMessage::createRepoListResponse(repo_list);
-	return NetworkUtils::sendMessage(client_socket, response);
+	return sendMessage(client_socket, session, response);
 }
 
 // 使用仓库请求处理
@@ -668,7 +668,7 @@ bool Server::handleUseRepoRequest(int client_socket, shared_ptr<ClientSession> s
 
 	auto response = ProtocolMessage::createStringMessage(MessageType::USE_REPO_RESPONSE,
 		"Using repository: " + repo_name);
-	return NetworkUtils::sendMessage(client_socket, response);
+	return sendMessage(client_socket, session, response);
 }
 
 // 创建仓库请求处理
@@ -692,7 +692,7 @@ bool Server::handleCreateRepoRequest(int client_socket, shared_ptr<ClientSession
 	if (impl_->repo_manager->createRepository(repo_name)) {
 		auto response = ProtocolMessage::createStringMessage(MessageType::CREATE_REPO_RESPONSE,
 			"Repository created: " + repo_name);
-		return NetworkUtils::sendMessage(client_socket, response);
+		return sendMessage(client_socket, session, response);
 	}
 	else {
 		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to create repository");
@@ -726,7 +726,7 @@ bool Server::handleRemoveRepoRequest(int client_socket, shared_ptr<ClientSession
 
 		auto response = ProtocolMessage::createStringMessage(MessageType::REMOVE_REPO_RESPONSE,
 			"Repository removed: " + repo_name);
-		return NetworkUtils::sendMessage(client_socket, response);
+		return sendMessage(client_socket, session, response);
 	}
 	else {
 		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to remove repository");
@@ -847,7 +847,7 @@ bool Server::handlePushRequest(int client_socket, shared_ptr<ClientSession> sess
 	}
 
 	auto response = ProtocolMessage::createStringMessage(MessageType::PUSH_RESPONSE, "Push completed");
-	return NetworkUtils::sendMessage(client_socket, response);
+	return sendMessage(client_socket, session, response);
 }
 
 // 推送检查请求处理
@@ -942,7 +942,7 @@ bool Server::handlePushCheckRequest(int client_socket, shared_ptr<ClientSession>
 
 	// 发送检查响应
 	auto response = ProtocolMessage::createPushCheckResponse(remote_head, needs_update);
-	return NetworkUtils::sendMessage(client_socket, response);
+	return sendMessage(client_socket, session, response);
 }
 
 // 推送提交数据处理
@@ -1083,7 +1083,7 @@ bool Server::handlePullRequest(int client_socket, shared_ptr<ClientSession> sess
 
 	// 发送拉取完成响应即可，因为实际数据传输在PULL_CHECK阶段完成
 	auto response = ProtocolMessage::createStringMessage(MessageType::PULL_RESPONSE, "Pull completed");
-	return NetworkUtils::sendMessage(client_socket, response);
+	return sendMessage(client_socket, session, response);
 }
 
 // 拉取检查请求处理
@@ -1205,7 +1205,7 @@ bool Server::handlePullCheckRequest(int client_socket, shared_ptr<ClientSession>
 
 	// 无需更新
 	auto response = ProtocolMessage::createPullCheckResponse(remote_head, has_updates, commits_count);
-	return NetworkUtils::sendMessage(client_socket, response);
+	return sendMessage(client_socket, session, response);
 }
 
 // 克隆请求处理
@@ -1267,7 +1267,7 @@ bool Server::handleCloneRequest(int client_socket, shared_ptr<ClientSession> ses
 
 		auto response = ProtocolMessage::createStringMessage(MessageType::CLONE_RESPONSE,
 			"Clone completed: " + repo_name);
-		return NetworkUtils::sendMessage(client_socket, response);
+		return sendMessage(client_socket, session, response);
 
 	}
 	catch (const exception& e) {
@@ -1321,7 +1321,7 @@ bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> sessi
 			// 没有提交历史
 			fs::current_path(original_cwd);
 			auto response = ProtocolMessage::createLogResponse(commits);
-			return NetworkUtils::sendMessage(client_socket, response);
+			return sendMessage(client_socket, session, response);
 		}
 
 		string current_id;
@@ -1335,7 +1335,7 @@ bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> sessi
 			// 没有提交历史
 			fs::current_path(original_cwd);
 			auto response = ProtocolMessage::createLogResponse(commits);
-			return NetworkUtils::sendMessage(client_socket, response);
+			return sendMessage(client_socket, session, response);
 		}
 
 		// 遍历提交历史
@@ -1359,7 +1359,7 @@ bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> sessi
 
 		// 发送响应
 		auto response = ProtocolMessage::createLogResponse(commits);
-		return NetworkUtils::sendMessage(client_socket, response);
+		return sendMessage(client_socket, session, response);
 
 	} catch (const exception& e) {
 		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR,
