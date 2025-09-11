@@ -248,6 +248,89 @@ vector<string> Client::listRepositories() {
 	return repos;
 }
 
+// 日志查询
+vector<string> Client::log(int max_count, bool oneline) {
+	vector<string> log_entries;
+	
+	if (!authenticated_) {
+		cerr << "Not authenticated\n";
+		return log_entries;
+	}
+	
+	if (current_repo_.empty()) {
+		cerr << "No repository selected. Use 'use <repo>' command first.\n";
+		return log_entries;
+	}
+
+	if (!ensureConnected()) {
+		cerr << "Cannot establish connection to server\n";
+		return log_entries;
+	}
+
+	auto request = ProtocolMessage::createLogRequest(max_count, oneline);
+	if (!NetworkUtils::sendMessage(client_socket_, request)) {
+		cerr << "Failed to send log request\n";
+		return log_entries;
+	}
+
+	ProtocolMessage response;
+	if (!NetworkUtils::receiveMessage(client_socket_, response)) {
+		cerr << "Failed to receive log response\n";
+		return log_entries;
+	}
+
+	if (response.header.type == MessageType::ERROR_MSG) {
+		cerr << "Error: " << response.getStringPayload() << "\n";
+		return log_entries;
+	}
+
+	if (response.header.type == MessageType::LOG_RESPONSE) {
+		// 解析日志响应
+		if (response.payload.size() >= sizeof(LogResponsePayload)) {
+			LogResponsePayload log_payload;
+			memcpy(&log_payload, response.payload.data(), sizeof(LogResponsePayload));
+
+			size_t offset = sizeof(LogResponsePayload);
+			for (uint32_t i = 0; i < log_payload.commits_count && offset < response.payload.size(); ++i) {
+				// 读取commit_id
+				if (offset + sizeof(uint32_t) <= response.payload.size()) {
+					uint32_t commit_id_length;
+					memcpy(&commit_id_length, response.payload.data() + offset, sizeof(uint32_t));
+					offset += sizeof(uint32_t);
+					
+					if (offset + commit_id_length <= response.payload.size()) {
+						string commit_id(reinterpret_cast<const char*>(response.payload.data() + offset), commit_id_length);
+						offset += commit_id_length;
+						
+						// 读取message
+						if (offset + sizeof(uint32_t) <= response.payload.size()) {
+							uint32_t message_length;
+							memcpy(&message_length, response.payload.data() + offset, sizeof(uint32_t));
+							offset += sizeof(uint32_t);
+							
+							if (offset + message_length <= response.payload.size()) {
+								string message(reinterpret_cast<const char*>(response.payload.data() + offset), message_length);
+								offset += message_length;
+								
+								// 格式化输出
+								if (oneline) {
+									log_entries.push_back(commit_id.substr(0, 12) + " " + message);
+								} else {
+									log_entries.push_back("commit " + commit_id);
+									log_entries.push_back("    " + message);
+									log_entries.push_back(""); // 空行分隔
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return log_entries;
+}
+
 // 使用仓库
 bool Client::useRepository(const string& repo_name) {
 	if (!authenticated_) {
@@ -982,6 +1065,33 @@ bool Client::processInteractiveCommand(const string& command, const vector<strin
 		cout << "Current repository: " << (current_repo_.empty() ? "(none)" : current_repo_) << "\n";
 		return true;
 	}
+	else if (command == "log") {
+		// 解析参数
+		int max_count = -1;
+		bool oneline = false;
+		
+		for (size_t i = 0; i < args.size(); ++i) {
+			if (args[i] == "--oneline") {
+				oneline = true;
+			}
+			else if (args[i] == "-n" && i + 1 < args.size()) {
+				try {
+					max_count = stoi(args[i + 1]);
+					i++; // 跳过下一个参数
+				}
+				catch (const exception&) {
+					cerr << "Invalid number: " << args[i + 1] << "\n";
+					return false;
+				}
+			}
+		}
+		
+		auto log_entries = log(max_count, oneline);
+		for (const string& entry : log_entries) {
+			cout << entry << "\n";
+		}
+		return true;
+	}
 	else {
 		cerr << "Unknown command: " << command << ". Type 'help' for available commands.\n";
 		return false;
@@ -999,6 +1109,7 @@ void Client::printHelp() {
 	cout << "  push                 - Push to current repository\n";
 	cout << "  pull                 - Pull from current repository\n";
 	cout << "  clone <repo>         - Clone a repository\n";
+	cout << "  log [--oneline] [-n <count>] - Show commit log\n";
 	cout << "  status               - Show connection status\n";
 	cout << "  quit, exit           - Disconnect and exit\n";
 }

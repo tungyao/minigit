@@ -465,6 +465,9 @@ bool Server::processMessage(int client_socket, shared_ptr<ClientSession> session
 	case MessageType::CLONE_REQUEST:
 		return handleCloneRequest(client_socket, session, msg);
 
+	case MessageType::LOG_REQUEST:
+		return handleLogRequest(client_socket, session, msg);
+
 	case MessageType::HEARTBEAT:
 		return 1;
 
@@ -1235,6 +1238,116 @@ bool Server::handleCloneRequest(int client_socket, shared_ptr<ClientSession> ses
 	catch (const exception& e) {
 		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR,
 			"Clone failed: " + string(e.what()));
+		return false;
+	}
+}
+
+// 处理日志请求
+bool Server::handleLogRequest(int client_socket, shared_ptr<ClientSession> session, const ProtocolMessage& msg) {
+	if (!session->authenticated) {
+		sendErrorResponse(client_socket, StatusCode::AUTH_REQUIRED, "Authentication required");
+		return false;
+	}
+
+	if (session->current_repo.empty()) {
+		sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "No repository selected");
+		return false;
+	}
+
+	try {
+		// 解析请求参数
+		if (msg.payload.size() < sizeof(LogRequestPayload)) {
+			sendErrorResponse(client_socket, StatusCode::INVALID_REQUEST, "Invalid log request payload");
+			return false;
+		}
+
+		LogRequestPayload log_payload;
+		memcpy(&log_payload, msg.payload.data(), sizeof(LogRequestPayload));
+
+		int max_count = static_cast<int>(log_payload.max_count);
+		bool oneline = log_payload.oneline != 0;
+
+		// 切换到仓库目录
+		fs::path repo_path = fs::path(config_.root_path) / session->current_repo;
+		if (!fs::exists(repo_path / ".minigit")) {
+			sendErrorResponse(client_socket, StatusCode::INVALID_REPO, "Repository not found");
+			return false;
+		}
+
+		// 备份当前工作目录
+		fs::path original_cwd = fs::current_path();
+		fs::current_path(repo_path);
+
+		vector<pair<string, string>> commits; // commit_id, message pairs
+
+		// 获取当前HEAD
+		fs::path head_path = repo_path / ".minigit" / "HEAD";
+		if (!fs::exists(head_path)) {
+			// 没有提交历史
+			fs::current_path(original_cwd);
+			auto response = ProtocolMessage::createLogResponse(commits);
+			return NetworkUtils::sendMessage(client_socket, response);
+		}
+
+		string current_id;
+		ifstream head_file(head_path);
+		if (head_file.is_open()) {
+			getline(head_file, current_id);
+			head_file.close();
+		}
+
+		if (current_id.empty()) {
+			// 没有提交历史
+			fs::current_path(original_cwd);
+			auto response = ProtocolMessage::createLogResponse(commits);
+			return NetworkUtils::sendMessage(client_socket, response);
+		}
+
+		// 遍历提交历史
+		string commit_id = current_id;
+		int count = 0;
+
+		while (!commit_id.empty() && (max_count == -1 || count < max_count)) {
+			// 读取提交对象
+			fs::path commit_path = repo_path / ".minigit" / "objects" / commit_id;
+			if (!fs::exists(commit_path)) {
+				break;
+			}
+
+			ifstream commit_file(commit_path);
+			if (!commit_file.is_open()) {
+				break;
+			}
+
+			string line;
+			string message;
+			string parent_id;
+
+			// 解析提交对象格式
+			while (getline(commit_file, line)) {
+				if (line.substr(0, 8) == "message:") {
+					message = line.substr(8);
+				} else if (line.substr(0, 7) == "parent:") {
+					parent_id = line.substr(7);
+				}
+			}
+			commit_file.close();
+
+			commits.push_back(make_pair(commit_id, message));
+			commit_id = parent_id;
+			count++;
+		}
+
+		// 恢复工作目录
+		fs::current_path(original_cwd);
+
+		// 发送响应
+		auto response = ProtocolMessage::createLogResponse(commits);
+		return NetworkUtils::sendMessage(client_socket, response);
+
+	} catch (const exception& e) {
+		sendErrorResponse(client_socket, StatusCode::SERVER_ERROR,
+			"Log failed: " + string(e.what()));
 		return false;
 	}
 }

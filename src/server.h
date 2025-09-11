@@ -70,6 +70,7 @@ private:
     bool handlePullRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
     bool handlePullCheckRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
     bool handleCloneRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+    bool handleLogRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
     bool handleHeartbeat(int client_socket, shared_ptr<class ClientSession> session);
     
     // 工具方法
