@@ -52,6 +52,11 @@ public:
 	bool pull();
 	bool clone(const string& repo_name);
 
+	// 压缩传输操作
+	bool pushCompressed();
+	bool pullCompressed();
+	bool cloneCompressed(const string& repo_name);
+
 	// 日志操作
 	vector<string> log(int max_count = -1, bool line = false);
 

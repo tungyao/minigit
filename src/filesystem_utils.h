@@ -19,6 +19,8 @@ public:
 	// 文件操作
 	static void writeText(const fs::path& p, const string& s);
 	static string readText(const fs::path& p);
+	static void writeBinary(const fs::path& p, const vector<uint8_t>& data);
+	static vector<uint8_t> readBinary(const fs::path& p);
 
 	// 仓库检查
 	static void ensureRepo();

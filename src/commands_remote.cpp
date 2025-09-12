@@ -1,5 +1,7 @@
 #include "commands_remote.h"
 #include "client.h"
+#include "compression.h"
+#include "progress.h"
 
 string CommandsRemote::getRemote()
 {
@@ -83,18 +85,77 @@ int CommandsRemote::push(vector<string> args)
 	// 原有的本地文件系统push逻辑
 	fs::path r = remote;
 	fs::create_directories(r / "objects");
-	// copy all local objects not present remotely
-	for (auto& e : fs::directory_iterator(FileSystemUtils::objectsDir()))
-	{
-		auto id = e.path().filename().string();
-		if (!fs::exists(r / "objects" / id))
-			fs::copy_file(e.path(), r / "objects" / id,
-				fs::copy_options::overwrite_existing);
+	
+	cout << "正在扫描需要推送的文件...\n";
+	
+	// 收集需要推送的文件
+	vector<fs::path> files_to_push;
+	vector<fs::path> relative_paths;
+	
+	// 添加HEAD文件
+	if (fs::exists(FileSystemUtils::headPath())) {
+		files_to_push.push_back(FileSystemUtils::headPath());
+		relative_paths.push_back("HEAD");
 	}
-	// update remote HEAD
+	
+	// 添加对象文件
+	if (fs::exists(FileSystemUtils::objectsDir())) {
+		for (auto& e : fs::directory_iterator(FileSystemUtils::objectsDir())) {
+			auto id = e.path().filename().string();
+			if (!fs::exists(r / "objects" / id)) {
+				files_to_push.push_back(e.path());
+				relative_paths.push_back(fs::path("objects") / id);
+			}
+		}
+	}
+	
+	if (files_to_push.empty()) {
+		cout << "没有文件需要推送\n";
+		return 0;
+	}
+	
+	cout << "发现 " << files_to_push.size() << " 个文件需要推送\n";
+	
+	// 创建压缩归档
+	vector<uint8_t> compressed_archive;
+	bool compression_success = CompressionUtils::createCompressedArchive(
+		relative_paths,
+		FileSystemUtils::repoRoot() / ".minigit",
+		compressed_archive,
+		[](int progress, const string& description) {
+			ProgressDisplay::showCompressionProgress(progress, "压缩", description);
+		}
+	);
+	
+	ProgressDisplay::finish();
+	
+	if (!compression_success) {
+		cerr << "压缩失败\n";
+		return 1;
+	}
+	
+	cout << "正在传输压缩包...\n";
+	
+	// 计算传输进度并解压
+	bool extraction_success = CompressionUtils::extractCompressedArchive(
+		compressed_archive,
+		r,
+		[](int progress, const string& description) {
+			ProgressDisplay::showCompressionProgress(progress, "解压", description);
+		}
+	);
+	
+	ProgressDisplay::finish();
+	
+	if (!extraction_success) {
+		cerr << "解压失败\n";
+		return 1;
+	}
+	
 	string head = FileSystemUtils::readText(FileSystemUtils::headPath());
-	FileSystemUtils::writeText(r / "HEAD", head);
-	cout << "Pushed to " << remote << " (HEAD=" << head.substr(0, 12) << ")\n";
+	cout << "推送完成到 " << remote << " (HEAD=" << head.substr(0, 12) << ")\n";
+	cout << "传输了 " << ProgressDisplay::formatFileSize(compressed_archive.size()) 
+		 << " 压缩数据，包含 " << files_to_push.size() << " 个文件\n";
 	return 0;
 }
 
@@ -145,22 +206,80 @@ int CommandsRemote::pull(vector<string> args)
 	fs::path r = remote;
 	if (!fs::exists(r))
 	{
-		cerr << "Remote path missing." << "\n";
+		cerr << "远程路径不存在: " << remote << "\n";
 		return 1;
 	}
-	// copy objects from remote
-	for (auto& e : fs::directory_iterator(r / "objects"))
-	{
-		auto id = e.path().filename().string();
-		if (!fs::exists(FileSystemUtils::objectsDir() / id))
-			fs::copy_file(e.path(), r / "objects" / id,
-				fs::copy_options::overwrite_existing);
+	
+	cout << "正在扫描需要拉取的文件...\n";
+	
+	// 收集需要拉取的文件
+	vector<fs::path> files_to_pull;
+	vector<fs::path> relative_paths;
+	
+	// 添加HEAD文件
+	if (fs::exists(r / "HEAD")) {
+		files_to_pull.push_back(r / "HEAD");
+		relative_paths.push_back("HEAD");
 	}
-	// update local HEAD to remote's HEAD
-	string rhead = FileSystemUtils::readText(r / "HEAD");
-	if (!rhead.empty())
-		FileSystemUtils::writeText(FileSystemUtils::headPath(), rhead);
-	cout << "Pulled from " << remote << " (HEAD=" << rhead.substr(0, 12) << ")\n";
+	
+	// 添加对象文件
+	if (fs::exists(r / "objects")) {
+		for (auto& e : fs::directory_iterator(r / "objects")) {
+			auto id = e.path().filename().string();
+			if (!fs::exists(FileSystemUtils::objectsDir() / id)) {
+				files_to_pull.push_back(e.path());
+				relative_paths.push_back(fs::path("objects") / id);
+			}
+		}
+	}
+	
+	if (files_to_pull.empty()) {
+		cout << "没有文件需要拉取\n";
+		return 0;
+	}
+	
+	cout << "发现 " << files_to_pull.size() << " 个文件需要拉取\n";
+	
+	// 创建压缩归档
+	vector<uint8_t> compressed_archive;
+	bool compression_success = CompressionUtils::createCompressedArchive(
+		relative_paths,
+		r,
+		compressed_archive,
+		[](int progress, const string& description) {
+			ProgressDisplay::showCompressionProgress(progress, "压缩", description);
+		}
+	);
+	
+	ProgressDisplay::finish();
+	
+	if (!compression_success) {
+		cerr << "压缩失败\n";
+		return 1;
+	}
+	
+	cout << "正在传输压缩包...\n";
+	
+	// 解压到本地
+	bool extraction_success = CompressionUtils::extractCompressedArchive(
+		compressed_archive,
+		FileSystemUtils::repoRoot() / ".minigit",
+		[](int progress, const string& description) {
+			ProgressDisplay::showCompressionProgress(progress, "解压", description);
+		}
+	);
+	
+	ProgressDisplay::finish();
+	
+	if (!extraction_success) {
+		cerr << "解压失败\n";
+		return 1;
+	}
+	
+	string rhead = FileSystemUtils::readText(FileSystemUtils::headPath());
+	cout << "拉取完成从 " << remote << " (HEAD=" << rhead.substr(0, 12) << ")\n";
+	cout << "传输了 " << ProgressDisplay::formatFileSize(compressed_archive.size()) 
+		 << " 压缩数据，包含 " << files_to_pull.size() << " 个文件\n";
 	return 0;
 }
 

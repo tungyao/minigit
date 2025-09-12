@@ -7,6 +7,8 @@
 #include <iostream>
 #include <sstream>
 #include "filesystem_utils.h"
+#include "compression.h"
+#include "progress.h"
 
 #include "utils.h"
 
@@ -446,155 +448,10 @@ bool Client::removeRepository(const string& repo_name) {
 	return false;
 }
 
-// Push操作
+// Push操作（现在使用压缩传输）
 bool Client::push() {
-	if (!authenticated_) {
-		cerr << "Not authenticated\n";
-		return false;
-	}
-
-	if (current_repo_.empty()) {
-		cerr << "No repository selected. Use 'use <repo>' first\n";
-		return false;
-	}
-
-	if (!ensureConnected()) {
-		cerr << "Cannot establish connection to server\n";
-		return false;
-	}
-
-	// 获取本地HEAD
-	string local_head = FileSystemUtils::readText(FileSystemUtils::headPath());
-	if (local_head.empty()) {
-		cerr << "No commits to push\n";
-		return false;
-	}
-
-	cout << "Checking what to push (local HEAD: " << local_head.substr(0, 12) << ")...\n";
-
-	// 首先获取远程HEAD来计算需要推送的commit
-	// 这里我们做一个简化的检查：只检查最新的commit
-	string new_commit_id = local_head;
-	string commit_parent;
-
-	// 获取当前本地最新commit的父节点
-	if (!local_head.empty()) {
-		auto commit_opt = CommitManager::loadCommit(local_head);
-		if (commit_opt) {
-			commit_parent = commit_opt->parent;
-		}
-	}
-
-	// 发送push检查请求，包含将要推送的commit信息
-	auto check_request = ProtocolMessage::createPushCheckRequest(local_head, new_commit_id, commit_parent);
-	if (!NetworkUtils::sendMessage(client_socket_, check_request)) {
-		cerr << "Failed to send push check request\n";
-		return false;
-	}
-
-	// 接收push检查响应
-	ProtocolMessage check_response;
-	if (!NetworkUtils::receiveMessage(client_socket_, check_response)) {
-		cerr << "Failed to receive push check response\n";
-		return false;
-	}
-
-	if (check_response.header.type == MessageType::ERROR_MSG) {
-		cerr << "Error: " << check_response.getStringPayload() << "\n";
-		return false;
-	}
-
-	if (check_response.header.type != MessageType::PUSH_CHECK_RESPONSE) {
-		cerr << "Invalid push check response\n";
-		return false;
-	}
-
-	// 解析检查响应
-	if (check_response.payload.size() < sizeof(PushCheckResponsePayload)) {
-		cerr << "Invalid push check response payload\n";
-		return false;
-	}
-
-	PushCheckResponsePayload check_payload;
-	memcpy(&check_payload, check_response.payload.data(), sizeof(PushCheckResponsePayload));
-
-	string remote_head;
-	if (check_payload.remote_head_length > 0) {
-		if (check_response.payload.size() < sizeof(PushCheckResponsePayload) + check_payload.remote_head_length) {
-			cerr << "Invalid remote head data\n";
-			return false;
-		}
-		remote_head = string(reinterpret_cast<const char*>(check_response.payload.data() + sizeof(PushCheckResponsePayload)),
-			check_payload.remote_head_length);
-	}
-
-	cout << "Remote HEAD: " << (remote_head.empty() ? "(none)" : remote_head.substr(0, 12)) << "\n";
-
-	// 检查是否需要推送
-	if (check_payload.needs_update == 0) {
-		cout << "Everything up-to-date\n";
-		return true;
-	}
-
-	// 计算需要推送的commit列表
-	vector<string> commits_to_upload = getCommitsToUpload(local_head, remote_head);
-	if (commits_to_upload.empty()) {
-		cout << "No commits to push\n";
-		return true;
-	}
-
-	cout << "Pushing " << commits_to_upload.size() << " commit(s)...\n";
-
-	// 上传每个commit和其对象
-	std::string last_commit_id;
-	for (const string& commit_id : commits_to_upload) {
-		cout << "Uploading commit " << commit_id.substr(0, 12) << "...\n";
-		last_commit_id = commit_id;
-		if (!uploadCommit(commit_id)) {
-			cerr << "Failed to upload commit " << commit_id << "\n";
-			return false;
-		}
-
-		// 上传commit中的所有对象
-		auto commit_opt = CommitManager::loadCommit(commit_id);
-		if (!commit_opt) {
-			cerr << "Cannot load commit " << commit_id << "\n";
-			return false;
-		}
-
-		for (const auto& tree_item : commit_opt->tree) {
-			const string& object_id = tree_item.second;
-			if (!uploadObject(object_id)) {
-				cerr << "Failed to upload object " << object_id << "\n";
-				return false;
-			}
-		}
-	}
-
-	// 发送推送请求（通知服务器更新HEAD）
-	auto push_request = ProtocolMessage::createPushRequest(last_commit_id);
-	if (!NetworkUtils::sendMessage(client_socket_, push_request)) {
-		cerr << "Failed to send push request\n";
-		return false;
-	}
-
-	// 接收推送响应
-	ProtocolMessage push_response;
-	if (!NetworkUtils::receiveMessage(client_socket_, push_response)) {
-		cerr << "Failed to receive push response\n";
-		return false;
-	}
-
-	if (push_response.header.type == MessageType::PUSH_RESPONSE) {
-		cout << "Push completed successfully!\n";
-		return true;
-	}
-	else if (push_response.header.type == MessageType::ERROR_MSG) {
-		cerr << "Error: " << push_response.getStringPayload() << "\n";
-		return false;
-	}
-
-	return false;
+	// 直接调用压缩推送方法
+	return pushCompressed();
 }
 
 // Pull操作
@@ -1741,4 +1598,109 @@ bool Client::receiveObjectData(const ProtocolMessage& msg) {
 	}
 
 	return true;
+}
+
+// 压缩推送操作
+bool Client::pushCompressed() {
+	if (!authenticated_) {
+		cerr << "Not authenticated\n";
+		return false;
+	}
+
+	if (current_repo_.empty()) {
+		cerr << "No repository selected. Use 'use <repo>' first\n";
+		return false;
+	}
+
+	if (!ensureConnected()) {
+		cerr << "Cannot establish connection to server\n";
+		return false;
+	}
+
+	// 获取本地HEAD
+	string local_head = FileSystemUtils::readText(FileSystemUtils::headPath());
+	if (local_head.empty()) {
+		cerr << "No commits to push\n";
+		return false;
+	}
+
+	cout << "收集需要推送的文件...\n";
+
+	// 收集需要推送的文件
+	vector<fs::path> files_to_push;
+	vector<fs::path> relative_paths;
+
+	// 添加HEAD文件
+	if (fs::exists(FileSystemUtils::headPath())) {
+		files_to_push.push_back(FileSystemUtils::headPath());
+		relative_paths.push_back("HEAD");
+	}
+
+	// 添加对象文件
+	if (fs::exists(FileSystemUtils::objectsDir())) {
+		for (auto& e : fs::directory_iterator(FileSystemUtils::objectsDir())) {
+			files_to_push.push_back(e.path());
+			relative_paths.push_back(fs::path("objects") / e.path().filename());
+		}
+	}
+
+	if (files_to_push.empty()) {
+		cout << "No files to push\n";
+		return true;
+	}
+
+	cout << "正在压缩 " << files_to_push.size() << " 个文件...\n";
+
+	// 创建压缩归档
+	vector<uint8_t> compressed_archive;
+	bool compression_success = CompressionUtils::createCompressedArchive(
+		relative_paths,
+		FileSystemUtils::repoRoot() / ".minigit",
+		compressed_archive,
+		[](int progress, const string& description) {
+			ProgressDisplay::showCompressionProgress(progress, "压缩", description);
+		}
+	);
+
+	ProgressDisplay::finish();
+
+	if (!compression_success) {
+		cerr << "Compression failed\n";
+		return false;
+	}
+
+	cout << "正在传输压缩包 (" << ProgressDisplay::formatFileSize(compressed_archive.size()) << ")...\n";
+
+	// 发送压缩数据
+	auto compressed_msg = ProtocolMessage::createCompressedDataMessage(
+		MessageType::PUSH_COMPRESSED_DATA,
+		0, // push operation
+		compressed_archive,
+		0, // 原始大小可以在这里计算，简化起见暂时设为0
+		static_cast<uint32_t>(files_to_push.size())
+	);
+
+	if (!NetworkUtils::sendMessage(client_socket_, compressed_msg)) {
+		cerr << "Failed to send compressed data\n";
+		return false;
+	}
+
+	// 接收推送响应
+	ProtocolMessage push_response;
+	if (!NetworkUtils::receiveMessage(client_socket_, push_response)) {
+		cerr << "Failed to receive push response\n";
+		return false;
+	}
+
+	if (push_response.header.type == MessageType::PUSH_RESPONSE) {
+		cout << "压缩推送完成！传输了 " << ProgressDisplay::formatFileSize(compressed_archive.size())
+			<< " 压缩数据，包含 " << files_to_push.size() << " 个文件\n";
+		return true;
+	}
+	else if (push_response.header.type == MessageType::ERROR_MSG) {
+		cerr << "Error: " << push_response.getStringPayload() << "\n";
+		return false;
+	}
+
+	return false;
 }
