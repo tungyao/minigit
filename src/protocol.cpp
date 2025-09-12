@@ -451,6 +451,33 @@ ProtocolMessage ProtocolMessage::createLogResponse(const vector<pair<string, str
 	return ProtocolMessage(MessageType::LOG_RESPONSE, data);
 }
 
+// 创建压缩数据消息
+ProtocolMessage ProtocolMessage::createCompressedDataMessage(MessageType type, 
+	uint32_t operation_type, const vector<uint8_t>& compressed_data, 
+	uint64_t original_size, uint32_t file_count) {
+	
+	// 创建压缩数据负载头部
+	CompressedDataPayload payload;
+	payload.operation_type = operation_type;
+	payload.original_size = original_size;
+	payload.compressed_size = static_cast<uint64_t>(compressed_data.size());
+	payload.checksum = calculateCRC32(compressed_data); // 对压缩数据计算校验和
+	payload.file_count = file_count;
+
+	// 组装完整数据
+	vector<uint8_t> data;
+	data.resize(sizeof(CompressedDataPayload) + compressed_data.size());
+	
+	// 复制头部
+	memcpy(data.data(), &payload, sizeof(CompressedDataPayload));
+	
+	// 复制压缩数据
+	memcpy(data.data() + sizeof(CompressedDataPayload), 
+		   compressed_data.data(), compressed_data.size());
+
+	return ProtocolMessage(type, data);
+}
+
 // CRC32计算（简单实现）
 uint32_t ProtocolMessage::calculateCRC32(const vector<uint8_t>& data) {
 	uint32_t crc = 0xFFFFFFFF;

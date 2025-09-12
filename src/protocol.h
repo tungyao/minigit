@@ -39,14 +39,17 @@ enum class MessageType : uint8_t {
 	PUSH_CHECK_RESPONSE = 0x37, // 推送检查响应（返回远程HEAD）
 	PUSH_COMMIT_DATA = 0x38,    // 推送提交数据
 	PUSH_OBJECT_DATA = 0x39,    // 推送对象数据
+	PUSH_COMPRESSED_DATA = 0x3E,// 推送压缩数据包
 	PULL_REQUEST = 0x32,        // 拉取请求
 	PULL_RESPONSE = 0x33,       // 拉取响应
 	PULL_CHECK_REQUEST = 0x3A,  // 拉取检查请求（获取远程HEAD）
 	PULL_CHECK_RESPONSE = 0x3B, // 拉取检查响应（返回远程HEAD）
 	PULL_COMMIT_DATA = 0x3C,    // 拉取提交数据
 	PULL_OBJECT_DATA = 0x3D,    // 拉取对象数据
+	PULL_COMPRESSED_DATA = 0x3F,// 拉取压缩数据包
 	CLONE_REQUEST = 0x34,       // 克隆请求
 	CLONE_RESPONSE = 0x35,      // 克隆响应
+	CLONE_COMPRESSED_DATA = 0x45,// 克隆压缩数据包
 	LOG_REQUEST = 0x50,         // 日志请求
 	LOG_RESPONSE = 0x51,        // 日志响应
 
@@ -268,6 +271,18 @@ struct LogResponsePayload {
 };
 #pragma pack(pop)
 
+// 压缩数据包负载
+#pragma pack(push, 1)
+struct CompressedDataPayload {
+	uint32_t operation_type;        // 操作类型：0=push, 1=pull, 2=clone
+	uint64_t original_size;         // 原始数据大小
+	uint64_t compressed_size;       // 压缩数据大小
+	uint32_t checksum;              // 原始数据校验和
+	uint32_t file_count;            // 包含的文件数量
+	// 接下来是压缩数据
+};
+#pragma pack(pop)
+
 /*
  * 协议消息类
  * 封装消息的序列化和反序列化
@@ -321,6 +336,11 @@ public:
 	// 新增：日志相关消息
 	static ProtocolMessage createLogRequest(int max_count, bool line);
 	static ProtocolMessage createLogResponse(const vector<pair<string, string>>& commits);
+
+	// 新增：压缩传输相关消息
+	static ProtocolMessage createCompressedDataMessage(MessageType type, 
+		uint32_t operation_type, const vector<uint8_t>& compressed_data, 
+		uint64_t original_size, uint32_t file_count);
 
 	// 工具方法
 	static uint32_t calculateCRC32(const vector<uint8_t>& data);

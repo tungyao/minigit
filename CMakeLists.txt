@@ -53,6 +53,15 @@ endif()
 #    set(CRYPTO_LIBS)
 #endif()
 
+# 查找zlib库（用于压缩）
+find_package(ZLIB REQUIRED)
+if(ZLIB_FOUND)
+    message(STATUS "Found ZLIB: ${ZLIB_VERSION_STRING}")
+    set(COMPRESSION_LIBS ${ZLIB_LIBRARIES})
+else()
+    message(FATAL_ERROR "ZLIB not found, required for compression")
+endif()
+
 # 收集源文件
 set(SOURCES
     src/aes.c
@@ -70,6 +79,8 @@ set(SOURCES
     src/crypto.cpp
     src/protocol.cpp
     src/client.cpp
+    src/compression.cpp
+    src/progress.cpp
 )
 
 # 收集头文件
@@ -90,13 +101,15 @@ set(HEADERS
     src/crypto.h
     src/protocol.h
     src/client.h
+    src/compression.h
+    src/progress.h
 )
 
 # 添加可执行文件
 add_executable(minigit ${SOURCES} ${HEADERS})
 
 # 包含头文件目录
-target_include_directories(minigit PRIVATE src)
+target_include_directories(minigit PRIVATE src ${ZLIB_INCLUDE_DIRS})
 
 # 设置输出目录
 set_target_properties(minigit PROPERTIES
@@ -106,10 +119,10 @@ set_target_properties(minigit PROPERTIES
 # 链接必要的库
 if(WIN32)
     # Windows下需要的库
-    target_link_libraries(minigit ${NETWORK_LIBS})
+    target_link_libraries(minigit ${NETWORK_LIBS} ${COMPRESSION_LIBS})
 else()
     # Linux下需要的库
-    target_link_libraries(minigit Threads::Threads ${NETWORK_LIBS})
+    target_link_libraries(minigit Threads::Threads ${NETWORK_LIBS} ${COMPRESSION_LIBS})
 endif()
 
 # 安装规则（可选）
