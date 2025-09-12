@@ -6,23 +6,30 @@
 #include "objects.h"
 #include "commit.h"
 
+// Forward declarations
+class CommandsBasic;
+class CommandsHistory; 
+class CommandsRemote;
+
 /**
  * MiniGit命令实现类
- * 实现所有的Git命令功能
+ * 实现所有的Git命令功能 - 现在使用组件化的方式
  */
 class Commands {
 public:
-    // 基本命令
+    // 基本命令 - 委托给 CommandsBasic
     static int init();
     static int add(vector<string> args);
     static int commit(vector<string> args);
     static int status();
     static int checkout();
+    
+    // 历史命令 - 委托给 CommandsHistory
     static int reset(vector<string> args);
     static int log(vector<string> args);
     static int diff(vector<string> args);
     
-    // 远程命令
+    // 远程命令 - 委托给 CommandsRemote
     static int push(vector<string> args = {});
     static int pull(vector<string> args = {});
     static int setRemote(const string& path);
