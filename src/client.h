@@ -104,6 +104,7 @@ private:
 	vector<string> parseCommand(const string& input);
 	bool receiveCloneData(const string& repo_name);
 	bool processCloneFile(const fs::path& local_repo_path, const ProtocolMessage& file_msg);
+	bool processCompressedCloneData(const fs::path& local_repo_path, const ProtocolMessage& msg, const string& repo_name);
 	void setRemoteConfigForClone(const fs::path& local_repo_path, const string& repo_name);
 
 	// 智能push相关的辅助方法

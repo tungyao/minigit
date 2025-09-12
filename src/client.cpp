@@ -1006,28 +1006,35 @@ bool Client::receiveCloneData(const string& repo_name) {
 	fs::path local_repo_path = fs::current_path() / repo_name;
 
 	try {
-		// 先接收克隆开始消息
-		ProtocolMessage start_msg;
-		if (!NetworkUtils::receiveMessage(client_socket_, start_msg)) {
-			cerr << "Failed to receive clone start message\n";
+		// 先接收第一个消息
+		ProtocolMessage first_msg;
+		if (!NetworkUtils::receiveMessage(client_socket_, first_msg)) {
+			cerr << "Failed to receive clone message\n";
 			return false;
 		}
 
-		if (start_msg.header.type != MessageType::CLONE_DATA_START) {
-			if (start_msg.header.type == MessageType::ERROR_MSG) {
-				cerr << "Clone error: " << start_msg.getStringPayload() << "\n";
+		// 检查是否为压缩数据
+		if (first_msg.header.type == MessageType::CLONE_COMPRESSED_DATA) {
+			cout << "Receiving compressed clone data...\n";
+			return processCompressedCloneData(local_repo_path, first_msg, repo_name);
+		}
+
+		// 否则按照原始格式处理
+		if (first_msg.header.type != MessageType::CLONE_DATA_START) {
+			if (first_msg.header.type == MessageType::ERROR_MSG) {
+				cerr << "Clone error: " << first_msg.getStringPayload() << "\n";
 			}
 			return false;
 		}
 
 		// 解析克隆开始消息
-		if (start_msg.payload.size() < sizeof(CloneDataStartPayload)) {
+		if (first_msg.payload.size() < sizeof(CloneDataStartPayload)) {
 			cerr << "Invalid clone start message\n";
 			return false;
 		}
 
 		CloneDataStartPayload start_payload;
-		memcpy(&start_payload, start_msg.payload.data(), sizeof(CloneDataStartPayload));
+		memcpy(&start_payload, first_msg.payload.data(), sizeof(CloneDataStartPayload));
 
 		cout << "Cloning repository '" << repo_name << "'...\n";
 		cout << "Total files: " << start_payload.total_files << "\n";
@@ -1166,6 +1173,55 @@ bool Client::processCloneFile(const fs::path& local_repo_path, const ProtocolMes
 		cerr << "Failed to write file " << file_path << ": " << e.what() << "\n";
 		return false;
 	}
+}
+
+// 处理压缩克隆数据
+bool Client::processCompressedCloneData(const fs::path& local_repo_path, const ProtocolMessage& msg, const string& repo_name) {
+	cout << "Processing compressed clone data...\n";
+
+	// 解析压缩数据负载
+	if (msg.payload.size() < sizeof(CompressedDataPayload)) {
+		cerr << "Invalid compressed data payload\n";
+		return false;
+	}
+
+	CompressedDataPayload payload;
+	memcpy(&payload, msg.payload.data(), sizeof(CompressedDataPayload));
+
+	// 提取压缩数据
+	vector<uint8_t> compressed_data(
+		msg.payload.begin() + sizeof(CompressedDataPayload),
+		msg.payload.end()
+	);
+
+	cout << "Received " << ProgressDisplay::formatFileSize(compressed_data.size())
+		<< " compressed data containing " << payload.file_count << " files\n";
+
+	// 创建本地目录
+	fs::create_directories(local_repo_path);
+
+	// 解压到本地目录
+	bool extraction_success = CompressionUtils::extractCompressedArchive(
+		compressed_data,
+		local_repo_path,
+		[](int progress, const string& description) {
+			cout << "Extracting: " << progress << "% - " << description << "\r";
+			cout.flush();
+		}
+	);
+
+	if (!extraction_success) {
+		cerr << "\nFailed to extract compressed data\n";
+		return false;
+	}
+
+	cout << "\nClone completed successfully!\n";
+	cout << "Repository cloned to: " << local_repo_path << "\n";
+
+	// 设置远程仓库地址到config文件中
+	setRemoteConfigForClone(local_repo_path, repo_name);
+
+	return true;
 }
 
 // ClientCommand实现
