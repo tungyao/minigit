@@ -39,6 +39,7 @@ enum class MessageType : uint8_t {
 	PUSH_CHECK_RESPONSE = 0x37, // 推送检查响应（返回远程HEAD）
 	PUSH_COMMIT_DATA = 0x38,    // 推送提交数据
 	PUSH_OBJECT_DATA = 0x39,    // 推送对象数据
+	PUSH_OBJECT_DATA_COMPRESSED = 0x45, // 推送压缩数据 包含一个commit的全部obj
 	PULL_REQUEST = 0x32,        // 拉取请求
 	PULL_RESPONSE = 0x33,       // 拉取响应
 	PULL_CHECK_REQUEST = 0x3A,  // 拉取检查请求（获取远程HEAD）
@@ -206,6 +207,17 @@ struct PushObjectDataPayload {
 	// 接下来是对象ID字符串，然后是对象数据
 };
 #pragma pack(pop)
+// 推送对象压缩数据负载
+#pragma pack(push, 1)
+struct PushObjectDataPayloadCompressed {
+	uint32_t operation_type; //
+	uint32_t original_size; // 原始对象数据长度
+	uint32_t compressed_size; // 压缩对象数据长度
+	uint32_t checksum;           // 数据校验和
+	uint32_t file_count;           // 数据校验和
+	// 接下来是对象ID字符串，然后是对象数据
+};
+#pragma pack(pop)
 
 // 拉取检查请求负载（客户端发送本地HEAD）
 #pragma pack(push, 1)
@@ -311,6 +323,10 @@ public:
 	static ProtocolMessage createPushCheckResponse(const string& remote_head, bool needs_update);
 	static ProtocolMessage createPushCommitData(const string& commit_id, const vector<uint8_t>& commit_data);
 	static ProtocolMessage createPushObjectData(const string& object_id, const vector<uint8_t>& object_data);
+
+	static ProtocolMessage createPushObjectDataCompressed(MessageType type,
+	uint32_t operation_type, const vector<uint8_t>& compressed_data,
+	uint64_t original_size, uint32_t file_count);
 
 	// 新增：智能pull相关消息
 	static ProtocolMessage createPullCheckRequest(const string& local_head);

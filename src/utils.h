@@ -14,7 +14,7 @@
 #include <arpa/inet.h>
 #endif
 
-bool resolveHost(const std::string& server_host, std::string& ip) {
+inline bool resolveHost(const std::string& server_host, std::string& ip) {
 	struct addrinfo hints, * result;
 	int status;
 
@@ -49,4 +49,23 @@ bool resolveHost(const std::string& server_host, std::string& ip) {
 	freeaddrinfo(result);
 	ip = std::string(rip);
 	return true;
+}
+
+
+inline uint32_t crc32(const vector<uint8_t>& data) {
+	uint32_t crc = 0xFFFFFFFF;
+
+	for (uint8_t byte : data) {
+		crc ^= byte;
+		for (int i = 0; i < 8; i++) {
+			if (crc & 1) {
+				crc = (crc >> 1) ^ 0xEDB88320;
+			}
+			else {
+				crc >>= 1;
+			}
+		}
+	}
+
+	return ~crc;
 }

@@ -312,7 +312,31 @@ ProtocolMessage ProtocolMessage::createPushObjectData(const string& object_id, c
 
 	return ProtocolMessage(MessageType::PUSH_OBJECT_DATA, data);
 }
+// 创建推送压缩对象数据消息
+ProtocolMessage ProtocolMessage::createPushObjectDataCompressed(MessageType type,
+	uint32_t operation_type, const vector<uint8_t>& compressed_data,
+	uint64_t original_size, uint32_t file_count) {
+	PushObjectDataPayloadCompressed payload;
+	payload.operation_type = operation_type;
+	payload.original_size = original_size;
+	payload.compressed_size = static_cast<uint64_t>(compressed_data.size());
+	payload.checksum = calculateCRC32(compressed_data); // 对压缩数据计算校验和
+	payload.file_count = file_count;
 
+
+	// 组装完整数据
+	vector<uint8_t> data;
+	data.resize(sizeof(PushObjectDataPayloadCompressed) + compressed_data.size());
+
+	// 复制头部
+	memcpy(data.data(), &payload, sizeof(PushObjectDataPayloadCompressed));
+
+	// 复制压缩数据
+	memcpy(data.data() + sizeof(PushObjectDataPayloadCompressed),
+		compressed_data.data(), compressed_data.size());
+
+	return ProtocolMessage(type, data);
+}
 // 创建推送请求处理 更新远程HEAD
 ProtocolMessage ProtocolMessage::createPushRequest(const string& remote_head) {
 	PushRequestPayload payload;
@@ -622,8 +646,9 @@ bool NetworkUtils::setSocketTimeout(int socket, int timeout_seconds) {
 bool NetworkUtils::isSocketConnected(int socket) {
 #ifdef _WIN32
 	//int result = recv(socket, buffer, 1, MSG_PEEK);
-	auto heartbeat = ProtocolMessage(MessageType::HEARTBEAT);
-	return NetworkUtils::sendMessage(socket, heartbeat);;
+	//auto heartbeat = ProtocolMessage(MessageType::HEARTBEAT);
+	//return NetworkUtils::sendMessage(socket, heartbeat);;
+	return 1;
 #else
 	char buffer[1];
 	ssize_t result = recv(socket, buffer, 1, MSG_PEEK | MSG_DONTWAIT);

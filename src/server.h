@@ -52,6 +52,7 @@ public:
 	bool handlePushCheckRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
 	bool handlePushCommitData(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
 	bool handlePushObjectData(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+	bool handlePushObjectDataCompressed(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
 	bool handlePullRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
 	bool handlePullCheckRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
 	bool handleCloneRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);

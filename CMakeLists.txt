@@ -55,48 +55,57 @@ endif()
 
 # 收集源文件
 set(SOURCES
-    src/aes.c
-    src/main.cpp
-    src/sha256.cpp
-    src/filesystem_utils.cpp
-    src/index.cpp
-    src/objects.cpp
-    src/commit.cpp
-    src/commands.cpp
-    src/commands_basic.cpp
-    src/commands_history.cpp
-    src/commands_remote.cpp
-    src/server.cpp
-    src/crypto.cpp
-    src/protocol.cpp
-    src/client.cpp
+        src/aes.c
+        src/main.cpp
+        src/sha256.cpp
+        src/filesystem_utils.cpp
+        src/index.cpp
+        src/objects.cpp
+        src/commit.cpp
+        src/commands.cpp
+        src/commands_basic.cpp
+        src/commands_history.cpp
+        src/commands_remote.cpp
+        src/server.cpp
+        src/crypto.cpp
+        src/protocol.cpp
+        src/client.cpp
+        src/progress.cpp
+        src/compression.cpp
 )
 
+# lz4
+set(LZ4
+        include/lz4.c
+        include/lz4.h
+)
 # 收集头文件
 set(HEADERS
-    src/aes.h
-    src/aes.hpp
-    src/common.h
-    src/sha256.h
-    src/filesystem_utils.h
-    src/index.h
-    src/objects.h
-    src/commit.h
-    src/commands.h
-    src/commands_basic.h
-    src/commands_history.h
-    src/commands_remote.h
-    src/server.h
-    src/crypto.h
-    src/protocol.h
-    src/client.h
+        src/aes.h
+        src/aes.hpp
+        src/progress.h
+        src/common.h
+        src/sha256.h
+        src/filesystem_utils.h
+        src/index.h
+        src/objects.h
+        src/commit.h
+        src/commands.h
+        src/commands_basic.h
+        src/commands_history.h
+        src/commands_remote.h
+        src/server.h
+        src/crypto.h
+        src/protocol.h
+        src/client.h
+        src/compression.h
 )
 
 # 添加可执行文件
-add_executable(minigit ${SOURCES} ${HEADERS})
+add_executable(minigit ${LZ4} ${SOURCES} ${HEADERS} )
 
 # 包含头文件目录
-target_include_directories(minigit PRIVATE src)
+target_include_directories(minigit PRIVATE src include)
 
 # 设置输出目录
 set_target_properties(minigit PROPERTIES

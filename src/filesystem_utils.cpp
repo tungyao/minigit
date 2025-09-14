@@ -48,3 +48,23 @@ string FileSystemUtils::readText(const fs::path& p) {
 	string s((istreambuf_iterator<char>(f)), {});
 	return s;
 }
+
+void FileSystemUtils::writeBinary(const fs::path& p, const vector<uint8_t>& data) {
+	fs::create_directories(p.parent_path());
+	ofstream f(p, ios::binary);
+	f.write(reinterpret_cast<const char*>(data.data()), data.size());
+}
+
+vector<uint8_t> FileSystemUtils::readBinary(const fs::path& p) {
+	if (!fs::exists(p)) {
+		return vector<uint8_t>();
+	}
+	ifstream f(p, ios::binary);
+	f.seekg(0, ios::end);
+	size_t size = f.tellg();
+	f.seekg(0, ios::beg);
+	
+	vector<uint8_t> data(size);
+	f.read(reinterpret_cast<char*>(data.data()), size);
+	return data;
+}
