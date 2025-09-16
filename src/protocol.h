@@ -46,6 +46,7 @@ enum class MessageType : uint8_t {
 	PULL_CHECK_RESPONSE = 0x3B, // 拉取检查响应（返回远程HEAD）
 	PULL_COMMIT_DATA = 0x3C,    // 拉取提交数据
 	PULL_OBJECT_DATA = 0x3D,    // 拉取对象数据
+	PULL_OBJECT_DATA_COMPRESSED = 0x3E, // 拉取压缩数据
 	CLONE_REQUEST = 0x34,       // 克隆请求
 	CLONE_RESPONSE = 0x35,      // 克隆响应
 	LOG_REQUEST = 0x50,         // 日志请求
@@ -57,6 +58,7 @@ enum class MessageType : uint8_t {
 	CLONE_DATA_START = 0x42,    // 克隆数据开始
 	CLONE_DATA_END = 0x43,      // 克隆数据结束
 	CLONE_FILE = 0x44,          // 克隆文件
+	CLONE_DATA_COMPRESSED = 0x46, // 克隆压缩数据
 
 	// 控制消息
 	HEARTBEAT = 0x60,           // 心跳
@@ -149,6 +151,18 @@ struct CloneFilePayload {
 	uint32_t checksum;          // 文件校验和
 	uint8_t file_type;          // 文件类型: 0=文件, 1=目录
 	// 接下来是文件路径，然后是文件数据
+};
+#pragma pack(pop)
+
+// 克隆压缩数据负载
+#pragma pack(push, 1)
+struct CloneDataCompressedPayload {
+	uint32_t operation_type;     // 操作类型
+	uint32_t original_size;      // 原始数据长度
+	uint32_t compressed_size;    // 压缩数据长度
+	uint32_t checksum;           // 数据校验和
+	uint32_t file_count;         // 文件数量
+	// 接下来是压缩的归档数据
 };
 #pragma pack(pop)
 
@@ -256,6 +270,18 @@ struct PullObjectDataPayload {
 };
 #pragma pack(pop)
 
+// 拉取对象压缩数据负载
+#pragma pack(push, 1)
+struct PullObjectDataPayloadCompressed {
+	uint32_t operation_type;     // 操作类型
+	uint32_t original_size;      // 原始数据长度
+	uint32_t compressed_size;    // 压缩数据长度
+	uint32_t checksum;           // 数据校验和
+	uint32_t file_count;         // 文件数量
+	// 接下来是压缩的对象数据
+};
+#pragma pack(pop)
+
 // 日志请求负载
 #pragma pack(push, 1)
 struct LogRequestPayload {
@@ -333,6 +359,12 @@ public:
 	static ProtocolMessage createPullCheckResponse(const string& remote_head, bool has_updates, uint32_t commits_count);
 	static ProtocolMessage createPullCommitData(const string& commit_id, const vector<uint8_t>& commit_data);
 	static ProtocolMessage createPullObjectData(const string& object_id, const vector<uint8_t>& object_data);
+	static ProtocolMessage createPullObjectDataCompressed(uint32_t operation_type, const vector<uint8_t>& compressed_data,
+		uint64_t original_size, uint32_t file_count);
+
+	// 新增：clone压缩相关消息
+	static ProtocolMessage createCloneDataCompressed(uint32_t operation_type, const vector<uint8_t>& compressed_data,
+		uint64_t original_size, uint32_t file_count);
 
 	// 新增：日志相关消息
 	static ProtocolMessage createLogRequest(int max_count, bool line);

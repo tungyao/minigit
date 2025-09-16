@@ -424,6 +424,54 @@ ProtocolMessage ProtocolMessage::createPullObjectData(const string& object_id, c
 	return ProtocolMessage(MessageType::PULL_OBJECT_DATA, data);
 }
 
+// 创建拉取压缩对象数据消息
+ProtocolMessage ProtocolMessage::createPullObjectDataCompressed(uint32_t operation_type, const vector<uint8_t>& compressed_data,
+	uint64_t original_size, uint32_t file_count) {
+	PullObjectDataPayloadCompressed payload;
+	payload.operation_type = operation_type;
+	payload.original_size = original_size;
+	payload.compressed_size = static_cast<uint64_t>(compressed_data.size());
+	payload.checksum = calculateCRC32(compressed_data);
+	payload.file_count = file_count;
+
+	// 组装完整数据
+	vector<uint8_t> data;
+	data.resize(sizeof(PullObjectDataPayloadCompressed) + compressed_data.size());
+
+	// 复制头部
+	memcpy(data.data(), &payload, sizeof(PullObjectDataPayloadCompressed));
+
+	// 复制压缩数据
+	memcpy(data.data() + sizeof(PullObjectDataPayloadCompressed),
+		compressed_data.data(), compressed_data.size());
+
+	return ProtocolMessage(MessageType::PULL_OBJECT_DATA_COMPRESSED, data);
+}
+
+// 创建克隆压缩数据消息
+ProtocolMessage ProtocolMessage::createCloneDataCompressed(uint32_t operation_type, const vector<uint8_t>& compressed_data,
+	uint64_t original_size, uint32_t file_count) {
+	CloneDataCompressedPayload payload;
+	payload.operation_type = operation_type;
+	payload.original_size = original_size;
+	payload.compressed_size = static_cast<uint64_t>(compressed_data.size());
+	payload.checksum = calculateCRC32(compressed_data);
+	payload.file_count = file_count;
+
+	// 组装完整数据
+	vector<uint8_t> data;
+	data.resize(sizeof(CloneDataCompressedPayload) + compressed_data.size());
+
+	// 复制头部
+	memcpy(data.data(), &payload, sizeof(CloneDataCompressedPayload));
+
+	// 复制压缩数据
+	memcpy(data.data() + sizeof(CloneDataCompressedPayload),
+		compressed_data.data(), compressed_data.size());
+
+	return ProtocolMessage(MessageType::CLONE_DATA_COMPRESSED, data);
+}
+
 // 创建日志请求消息
 ProtocolMessage ProtocolMessage::createLogRequest(int max_count, bool line) {
 	LogRequestPayload payload;

@@ -99,6 +99,7 @@ private:
 	vector<string> parseCommand(const string& input);
 	bool receiveCloneData(const string& repo_name);
 	bool processCloneFile(const fs::path& local_repo_path, const ProtocolMessage& file_msg);
+	bool processCloneCompressedData(const fs::path& local_repo_path, const ProtocolMessage& msg);
 	void setRemoteConfigForClone(const fs::path& local_repo_path, const string& repo_name);
 
 	// 智能push相关的辅助方法
@@ -112,6 +113,7 @@ private:
 	bool downloadObject(const string& object_id);
 	bool receiveCommitData(const ProtocolMessage& msg);
 	bool receiveObjectData(const ProtocolMessage& msg);
+	bool receiveCompressedObjectData(const ProtocolMessage& msg);
 };
 
 /**

@@ -751,6 +751,11 @@ bool Client::pull() {
                     cerr << "Failed to process object data\n";
                     return false;
                 }
+            } else if (obj_msg.header.type == MessageType::PULL_OBJECT_DATA_COMPRESSED) {
+                if (!receiveCompressedObjectData(obj_msg)) {
+                    cerr << "Failed to process compressed object data\n";
+                    return false;
+                }
             } else if (obj_msg.header.type == MessageType::PULL_COMMIT_DATA) {
                 // 下一个提交开始了，退出对象循环
                 // 将消息放回去处理
@@ -1214,6 +1219,13 @@ bool Client::receiveCloneData(const string &repo_name) {
                 cout << "Progress: " << files_received << "/" << start_payload.total_files
                         << " files received\r";
                 cout.flush();
+            } else if (file_msg.header.type == MessageType::CLONE_DATA_COMPRESSED) {
+                if (!processCloneCompressedData(local_repo_path, file_msg)) {
+                    cerr << "Failed to process compressed data\n";
+                    return false;
+                }
+                // 压缩数据包含所有文件，直接跳出循环
+                break;
             } else if (file_msg.header.type == MessageType::CLONE_DATA_END) {
                 break;
             } else if (file_msg.header.type == MessageType::ERROR_MSG) {
@@ -1316,6 +1328,55 @@ bool Client::processCloneFile(const fs::path &local_repo_path, const ProtocolMes
         cerr << "Failed to write file " << file_path << ": " << e.what() << "\n";
         return false;
     }
+}
+
+// 处理克隆压缩数据
+bool Client::processCloneCompressedData(const fs::path &local_repo_path, const ProtocolMessage &msg) {
+    if (msg.payload.size() < sizeof(CloneDataCompressedPayload)) {
+        cerr << "Invalid compressed clone data payload\n";
+        return false;
+    }
+
+    CloneDataCompressedPayload payload;
+    memcpy(&payload, msg.payload.data(), sizeof(CloneDataCompressedPayload));
+
+    // 提取压缩数据
+    size_t offset = sizeof(CloneDataCompressedPayload);
+    if (msg.payload.size() < offset + payload.compressed_size) {
+        cerr << "Invalid compressed data size\n";
+        return false;
+    }
+
+    vector<uint8_t> compressed_data(msg.payload.begin() + offset,
+                                   msg.payload.begin() + offset + payload.compressed_size);
+
+    // 验证校验和
+    uint32_t calculated_crc = ProtocolMessage::calculateCRC32(compressed_data);
+    if (calculated_crc != payload.checksum) {
+        cerr << "CRC mismatch for compressed clone data\n";
+        return false;
+    }
+
+    cout << "\nReceiving repository archive (" 
+         << ProgressDisplay::formatFileSize(compressed_data.size()) << " compressed)...\n";
+
+    // 解压数据直接到本地仓库路径
+    bool extraction_success = CompressionUtils::extractCompressedArchive(
+        compressed_data, 
+        local_repo_path,
+        [](int progress, const string& description) {
+            ProgressDisplay::showCompressionProgress(progress, "extract", description);
+        }
+    );
+    ProgressDisplay::finish();
+
+    if (!extraction_success) {
+        cerr << "Failed to extract repository archive\n";
+        return false;
+    }
+
+    cout << "Repository archive extracted successfully\n";
+    return true;
 }
 
 // ClientCommand实现
@@ -1739,5 +1800,80 @@ bool Client::receiveObjectData(const ProtocolMessage &msg) {
         }
     }
 
+    return true;
+}
+
+// 接收压缩对象数据
+bool Client::receiveCompressedObjectData(const ProtocolMessage &msg) {
+    if (msg.payload.size() < sizeof(PullObjectDataPayloadCompressed)) {
+        cerr << "Invalid compressed object data payload\n";
+        return false;
+    }
+
+    PullObjectDataPayloadCompressed payload;
+    memcpy(&payload, msg.payload.data(), sizeof(PullObjectDataPayloadCompressed));
+
+    // 提取压缩数据
+    size_t offset = sizeof(PullObjectDataPayloadCompressed);
+    if (msg.payload.size() < offset + payload.compressed_size) {
+        cerr << "Invalid compressed data size\n";
+        return false;
+    }
+
+    vector<uint8_t> compressed_data(msg.payload.begin() + offset,
+                                   msg.payload.begin() + offset + payload.compressed_size);
+
+    // 验证校验和
+    uint32_t calculated_crc = ProtocolMessage::calculateCRC32(compressed_data);
+    if (calculated_crc != payload.checksum) {
+        cerr << "CRC mismatch for compressed data\n";
+        return false;
+    }
+
+    cout << "Receiving " << payload.file_count << " object(s) (" 
+         << ProgressDisplay::formatFileSize(compressed_data.size()) << " compressed)...\n";
+
+    // 解压数据到临时路径
+    fs::path temp_extract_path = fs::temp_directory_path() / "minigit_pull_extract";
+    fs::create_directories(temp_extract_path);
+
+    bool extraction_success = CompressionUtils::extractCompressedArchive(
+        compressed_data, 
+        temp_extract_path,
+        [](int progress, const string& description) {
+            ProgressDisplay::showCompressionProgress(progress, "extract", description);
+        }
+    );
+    ProgressDisplay::finish();
+
+    if (!extraction_success) {
+        cerr << "Failed to extract compressed archive\n";
+        fs::remove_all(temp_extract_path);
+        return false;
+    }
+
+    // 移动提取的文件到对象目录
+    fs::path extract_objects_path = temp_extract_path / MARKNAME / "objects";
+    if (fs::exists(extract_objects_path)) {
+        fs::create_directories(FileSystemUtils::objectsDir());
+        
+        for (const auto& entry : fs::recursive_directory_iterator(extract_objects_path)) {
+            if (entry.is_regular_file()) {
+                fs::path relative_path = fs::relative(entry.path(), extract_objects_path);
+                fs::path target_path = FileSystemUtils::objectsDir() / relative_path;
+                
+                // 只有当目标文件不存在时才复制
+                if (!fs::exists(target_path)) {
+                    fs::create_directories(target_path.parent_path());
+                    fs::copy_file(entry.path(), target_path);
+                }
+            }
+        }
+    }
+
+    // 清理临时文件
+    fs::remove_all(temp_extract_path);
+
+    cout << "Compressed objects extracted successfully\n";
     return true;
 }

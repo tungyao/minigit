@@ -1181,25 +1181,63 @@ bool Server::handlePullCheckRequest(int client_socket, shared_ptr<ClientSession>
                         return false;
                     }
 
-                    // 发送该commit的所有对象
-                    // 简化处理：解析commit数据获取tree信息
+                    // 发送该commit的所有对象 - 使用压缩
                     try {
                         string commit_content = string(commit_data.begin(), commit_data.end());
                         Commit commit = CommitManager::deserializeCommit(remote_head + "\n" + commit_content);
 
-                        // 发送所有tree中的对象
+                        // 收集所有需要发送的对象文件
+                        vector<fs::path> files_to_send;
+                        vector<fs::path> relative_paths;
+
+                        // 添加所有tree中的对象
                         for (const auto &tree_item: commit.tree) {
                             const string &object_id = tree_item.second;
                             fs::path obj_path = repo_path / MARKNAME / "objects" / object_id;
                             if (fs::exists(obj_path)) {
-                                ifstream obj_file(obj_path, ios::binary);
-                                if (obj_file.is_open()) {
-                                    vector<uint8_t> obj_data((istreambuf_iterator<char>(obj_file)), {});
-                                    obj_file.close();
+                                files_to_send.push_back(obj_path);
+                                relative_paths.push_back(fs::path("objects") / object_id);
+                            }
+                        }
 
-                                    auto obj_msg = ProtocolMessage::createPullObjectData(object_id, obj_data);
-                                    if (!NetworkUtils::sendMessage(client_socket, obj_msg)) {
-                                        return false;
+                        if (!files_to_send.empty()) {
+                            // 创建压缩归档
+                            vector<uint8_t> compressed_archive;
+                            uint32_t raw_size;
+                            bool compression_success = CompressionUtils::createCompressedArchive(
+                                relative_paths,
+                                repo_path / MARKNAME,
+                                compressed_archive,
+                                raw_size,
+                                [](int progress, const string& description) {
+                                    // 服务器端可以记录日志，但不显示进度
+                                }
+                            );
+
+                            if (compression_success) {
+                                // 发送压缩的对象数据
+                                auto compressed_msg = ProtocolMessage::createPullObjectDataCompressed(
+                                    0, compressed_archive, raw_size, files_to_send.size()
+                                );
+                                if (!NetworkUtils::sendMessage(client_socket, compressed_msg)) {
+                                    return false;
+                                }
+                            } else {
+                                // 如果压缩失败，回退到逐个发送
+                                for (const auto &tree_item: commit.tree) {
+                                    const string &object_id = tree_item.second;
+                                    fs::path obj_path = repo_path / MARKNAME / "objects" / object_id;
+                                    if (fs::exists(obj_path)) {
+                                        ifstream obj_file(obj_path, ios::binary);
+                                        if (obj_file.is_open()) {
+                                            vector<uint8_t> obj_data((istreambuf_iterator<char>(obj_file)), {});
+                                            obj_file.close();
+
+                                            auto obj_msg = ProtocolMessage::createPullObjectData(object_id, obj_data);
+                                            if (!NetworkUtils::sendMessage(client_socket, obj_msg)) {
+                                                return false;
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1265,11 +1303,39 @@ bool Server::handleCloneRequest(int client_socket, shared_ptr<ClientSession> ses
             return false;
         }
 
-        // 传输每个文件
+        // 尝试创建压缩归档发送所有文件
+        vector<fs::path> relative_paths;
         for (const auto &file_info: files_to_clone) {
-            if (!sendCloneFile(client_socket, file_info.first, file_info.second)) {
-                sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to send file: " + file_info.first);
+            relative_paths.push_back(file_info.first);
+        }
+
+        vector<uint8_t> compressed_archive;
+        uint32_t raw_size;
+        bool compression_success = CompressionUtils::createCompressedArchive(
+            relative_paths,
+            repo_path,
+            compressed_archive,
+            raw_size,
+            [](int progress, const string& description) {
+                // 服务器端可以记录日志，但不显示进度
+            }
+        );
+
+        if (compression_success) {
+            // 发送压缩的归档数据
+            auto compressed_msg = ProtocolMessage::createCloneDataCompressed(
+                0, compressed_archive, raw_size, files_to_clone.size()
+            );
+            if (!NetworkUtils::sendMessage(client_socket, compressed_msg)) {
                 return false;
+            }
+        } else {
+            // 如果压缩失败，回退到逐个发送文件
+            for (const auto &file_info: files_to_clone) {
+                if (!sendCloneFile(client_socket, file_info.first, file_info.second)) {
+                    sendErrorResponse(client_socket, StatusCode::SERVER_ERROR, "Failed to send file: " + file_info.first);
+                    return false;
+                }
             }
         }
 
