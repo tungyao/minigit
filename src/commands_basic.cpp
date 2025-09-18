@@ -247,7 +247,8 @@ int CommandsBasic::checkout() {
 	}
 	auto oc = CommitManager::loadCommit(head);
 	if (!oc) {
-		cerr << "HEAD object missing." << "\n";
+		cerr << "HEAD object missing."
+			 << "\n";
 		return 1;
 	}
 	// write files to working dir

@@ -77,7 +77,8 @@ int main(int argc, char **argv) {
 				a.push_back(argv[i]);
 			return CloneCommand::parseAndRun(a);
 		} else {
-			cerr << "Unknown command." << "\n";
+			cerr << "Unknown command."
+				 << "\n";
 			return 1;
 		}
 	} catch (const exception &e) {

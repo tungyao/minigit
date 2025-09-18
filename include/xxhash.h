@@ -274,7 +274,7 @@ struct XXH32_state_s {
 	uint32_t mem32[4];
 	uint32_t memsize;
 	uint32_t reserved; /* never read nor write, might be removed in a future version */
-}; /* typedef'd to XXH32_state_t */
+};					   /* typedef'd to XXH32_state_t */
 
 struct XXH64_state_s {
 	uint64_t total_len;
@@ -285,7 +285,7 @@ struct XXH64_state_s {
 	uint64_t mem64[4];
 	uint32_t memsize;
 	uint32_t reserved[2]; /* never read nor write, might be removed in a future version */
-}; /* typedef'd to XXH64_state_t */
+};						  /* typedef'd to XXH64_state_t */
 
 #else
 
@@ -299,7 +299,7 @@ struct XXH32_state_s {
 	unsigned mem32[4];
 	unsigned memsize;
 	unsigned reserved; /* never read nor write, might be removed in a future version */
-}; /* typedef'd to XXH32_state_t */
+};					   /* typedef'd to XXH32_state_t */
 
 #ifndef XXH_NO_LONG_LONG /* remove 64-bit support */
 struct XXH64_state_s {
@@ -311,7 +311,7 @@ struct XXH64_state_s {
 	unsigned long long mem64[4];
 	unsigned memsize;
 	unsigned reserved[2]; /* never read nor write, might be removed in a future version */
-}; /* typedef'd to XXH64_state_t */
+};						  /* typedef'd to XXH64_state_t */
 #endif
 
 #endif

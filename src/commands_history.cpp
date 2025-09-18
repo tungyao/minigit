@@ -147,7 +147,7 @@ int CommandsHistory::log(vector<string> args) {
 	}
 
 	string remote = CommandsRemote::getRemote();
-	if (remote.empty()) {
+	if (is_remote && remote.empty()) {
 		cerr << "No remote configured. Use: minigit set-remote <folder>\n";
 		return 1;
 	}
@@ -157,7 +157,7 @@ int CommandsHistory::log(vector<string> args) {
 		return 1;
 	}
 	CommandsRemote::NetworkRemote network_remote = CommandsRemote::parseNetworkRemote(remote);
-	if (network_remote.host.empty()) {
+	if (is_remote && network_remote.host.empty()) {
 		cerr << "Invalid network remote format: " << remote << "\n";
 		return 1;
 	}
