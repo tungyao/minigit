@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+ColumnLimit: 100
+BreakBeforeBraces: Attach
+UseTab: Always
+AllowShortFunctionsOnASingleLine: Empty
+MaxEmptyLinesToKeep: 1             # 函数体内最多保留 1 行空行
+EmptyLineBeforeAccessModifier: Always  # class 内 public/private 前加空行
+KeepEmptyLinesAtTheStartOfBlocks: false

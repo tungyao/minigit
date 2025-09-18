@@ -1,10 +1,10 @@
 #include "commands_remote.h"
 #include "client.h"
 
-string CommandsRemote::getRemote()
-{
-	FileSystemUtils::ensureRepo();
-	string cfg = FileSystemUtils::readText(FileSystemUtils::configPath());
+string CommandsRemote::getRemote() {
+	FileSystemUtils::getInstance().ensureRepo();
+	string cfg =
+		FileSystemUtils::getInstance().readText(FileSystemUtils::getInstance().configPath());
 	string key = "remote=";
 	auto p = cfg.find(key);
 	if (p == string::npos)
@@ -15,17 +15,14 @@ string CommandsRemote::getRemote()
 	return v;
 }
 
-void CommandsRemote::setRemoteConfig(const string& path)
-{
+void CommandsRemote::setRemoteConfig(const string &path) {
 	string s = "remote=" + path + "\n";
-	FileSystemUtils::writeText(FileSystemUtils::configPath(), s);
+	FileSystemUtils::getInstance().writeText(FileSystemUtils::getInstance().configPath(), s);
 }
 
-int CommandsRemote::setRemote(const string& path)
-{
-	FileSystemUtils::ensureRepo();
-	if (path.empty())
-	{
+int CommandsRemote::setRemote(const string &path) {
+	FileSystemUtils::getInstance().ensureRepo();
+	if (path.empty()) {
 		cerr << "Usage: minigit set-remote <absolute-folder>\n";
 		return 1;
 	}
@@ -35,12 +32,10 @@ int CommandsRemote::setRemote(const string& path)
 	return 0;
 }
 
-int CommandsRemote::push(vector<string> args)
-{
-	FileSystemUtils::ensureRepo();
+int CommandsRemote::push(vector<string> args) {
+	FileSystemUtils::getInstance().ensureRepo();
 	string remote = getRemote();
-	if (remote.empty())
-	{
+	if (remote.empty()) {
 		cerr << "No remote configured. Use: minigit set-remote <folder>\n";
 		return 1;
 	}
@@ -48,21 +43,17 @@ int CommandsRemote::push(vector<string> args)
 	printf("remote: %s\n", remote.c_str());
 
 	// 检查是否为网络远程仓库 (server://格式)
-	if (remote.find("server://") == 0)
-	{
+	if (remote.find("server://") == 0) {
 		// 解析命令行参数
 		string password;
-		for (size_t i = 0; i < args.size(); ++i)
-		{
-			if (args[i] == "--password" && i + 1 < args.size())
-			{
+		for (size_t i = 0; i < args.size(); ++i) {
+			if (args[i] == "--password" && i + 1 < args.size()) {
 				password = args[i + 1];
 				i++;
 			}
 		}
 
-		if (password.empty())
-		{
+		if (password.empty()) {
 			cerr << "Network push requires --password option\n";
 			cerr << "Usage: minigit push --password <password>\n";
 			return 1;
@@ -70,8 +61,7 @@ int CommandsRemote::push(vector<string> args)
 
 		// 解析网络远程地址
 		NetworkRemote network_remote = parseNetworkRemote(remote);
-		if (network_remote.host.empty())
-		{
+		if (network_remote.host.empty()) {
 			cerr << "Invalid network remote format: " << remote << "\n";
 			return 1;
 		}
@@ -84,46 +74,39 @@ int CommandsRemote::push(vector<string> args)
 	fs::path r = remote;
 	fs::create_directories(r / "objects");
 	// copy all local objects not present remotely
-	for (auto& e : fs::directory_iterator(FileSystemUtils::objectsDir()))
-	{
+	for (auto &e : fs::directory_iterator(FileSystemUtils::getInstance().objectsDir())) {
 		auto id = e.path().filename().string();
 		if (!fs::exists(r / "objects" / id))
-			fs::copy_file(e.path(), r / "objects" / id,
-				fs::copy_options::overwrite_existing);
+			fs::copy_file(e.path(), r / "objects" / id, fs::copy_options::overwrite_existing);
 	}
 	// update remote HEAD
-	string head = FileSystemUtils::readText(FileSystemUtils::headPath());
-	FileSystemUtils::writeText(r / "HEAD", head);
+	string head =
+		FileSystemUtils::getInstance().readText(FileSystemUtils::getInstance().headPath());
+	FileSystemUtils::getInstance().writeText(r / "HEAD", head);
 	cout << "Pushed to " << remote << " (HEAD=" << head.substr(0, 12) << ")\n";
 	return 0;
 }
 
-int CommandsRemote::pull(vector<string> args)
-{
-	FileSystemUtils::ensureRepo();
+int CommandsRemote::pull(vector<string> args) {
+	FileSystemUtils::getInstance().ensureRepo();
 	string remote = getRemote();
-	if (remote.empty())
-	{
+	if (remote.empty()) {
 		cerr << "No remote configured. Use: minigit set-remote <folder>\n";
 		return 1;
 	}
 
 	// 检查是否为网络远程仓库 (server://格式)
-	if (remote.find("server://") == 0)
-	{
+	if (remote.find("server://") == 0) {
 		// 解析命令行参数
 		string password;
-		for (size_t i = 0; i < args.size(); ++i)
-		{
-			if (args[i] == "--password" && i + 1 < args.size())
-			{
+		for (size_t i = 0; i < args.size(); ++i) {
+			if (args[i] == "--password" && i + 1 < args.size()) {
 				password = args[i + 1];
 				i++;
 			}
 		}
 
-		if (password.empty())
-		{
+		if (password.empty()) {
 			cerr << "Network pull requires --password option\n";
 			cerr << "Usage: minigit pull --password <password>\n";
 			return 1;
@@ -131,8 +114,7 @@ int CommandsRemote::pull(vector<string> args)
 
 		// 解析网络远程地址
 		NetworkRemote network_remote = parseNetworkRemote(remote);
-		if (network_remote.host.empty())
-		{
+		if (network_remote.host.empty()) {
 			cerr << "Invalid network remote format: " << remote << "\n";
 			return 1;
 		}
@@ -143,34 +125,30 @@ int CommandsRemote::pull(vector<string> args)
 
 	// 原有的本地文件系统pull逻辑
 	fs::path r = remote;
-	if (!fs::exists(r))
-	{
-		cerr << "Remote path missing." << "\n";
+	if (!fs::exists(r)) {
+		cerr << "Remote path missing."
+			 << "\n";
 		return 1;
 	}
 	// copy objects from remote
-	for (auto& e : fs::directory_iterator(r / "objects"))
-	{
+	for (auto &e : fs::directory_iterator(r / "objects")) {
 		auto id = e.path().filename().string();
-		if (!fs::exists(FileSystemUtils::objectsDir() / id))
-			fs::copy_file(e.path(), r / "objects" / id,
-				fs::copy_options::overwrite_existing);
+		if (!fs::exists(FileSystemUtils::getInstance().objectsDir() / id))
+			fs::copy_file(e.path(), r / "objects" / id, fs::copy_options::overwrite_existing);
 	}
 	// update local HEAD to remote's HEAD
-	string rhead = FileSystemUtils::readText(r / "HEAD");
+	string rhead = FileSystemUtils::getInstance().readText(r / "HEAD");
 	if (!rhead.empty())
-		FileSystemUtils::writeText(FileSystemUtils::headPath(), rhead);
+		FileSystemUtils::getInstance().writeText(FileSystemUtils::getInstance().headPath(), rhead);
 	cout << "Pulled from " << remote << " (HEAD=" << rhead.substr(0, 12) << ")\n";
 	return 0;
 }
 
-CommandsRemote::NetworkRemote CommandsRemote::parseNetworkRemote(const string& remote_url)
-{
+CommandsRemote::NetworkRemote CommandsRemote::parseNetworkRemote(const string &remote_url) {
 	NetworkRemote remote;
 
 	// 检查是否以 server:// 开头
-	if (remote_url.find("server://") != 0)
-	{
+	if (remote_url.find("server://") != 0) {
 		return remote; // 返回空的NetworkRemote
 	}
 
@@ -179,8 +157,7 @@ CommandsRemote::NetworkRemote CommandsRemote::parseNetworkRemote(const string& r
 
 	// 查找最后一个 /
 	size_t slash_pos = url_part.find_last_of('/');
-	if (slash_pos == string::npos)
-	{
+	if (slash_pos == string::npos) {
 		return remote; // 格式错误
 	}
 
@@ -192,20 +169,14 @@ CommandsRemote::NetworkRemote CommandsRemote::parseNetworkRemote(const string& r
 
 	// 解析 host:port
 	size_t colon_pos = host_port.find(':');
-	if (colon_pos != string::npos)
-	{
+	if (colon_pos != string::npos) {
 		remote.host = host_port.substr(0, colon_pos);
-		try
-		{
+		try {
 			remote.port = stoi(host_port.substr(colon_pos + 1));
-		}
-		catch (const exception&)
-		{
+		} catch (const exception &) {
 			remote.port = 8080; // 默认端口
 		}
-	}
-	else
-	{
+	} else {
 		remote.host = host_port;
 		remote.port = 8080; // 默认端口
 	}
@@ -214,8 +185,7 @@ CommandsRemote::NetworkRemote CommandsRemote::parseNetworkRemote(const string& r
 }
 
 // 执行网络 push 操作
-int CommandsRemote::networkPush(const NetworkRemote& remote, const string& password)
-{
+int CommandsRemote::networkPush(const NetworkRemote &remote, const string &password) {
 	cout << "Connecting to " << remote.host << ":" << remote.port << "...\n";
 
 	// 创建客户端配置
@@ -226,28 +196,24 @@ int CommandsRemote::networkPush(const NetworkRemote& remote, const string& passw
 	// 创建客户端并连接
 	Client client;
 
-	if (!client.connect())
-	{
+	if (!client.connect()) {
 		cerr << "Failed to connect to server\n";
 		return 1;
 	}
 
-	if (!client.authenticate())
-	{
+	if (!client.authenticate()) {
 		cerr << "Authentication failed\n";
 		return 1;
 	}
 
 	// 使用指定的仓库
-	if (!client.useRepository(remote.repo_name))
-	{
+	if (!client.useRepository(remote.repo_name)) {
 		cerr << "Failed to use repository: " << remote.repo_name << "\n";
 		return 1;
 	}
 
 	// 执行 push
-	if (!client.push())
-	{
+	if (!client.push()) {
 		cerr << "Push failed\n";
 		return 1;
 	}
@@ -257,8 +223,7 @@ int CommandsRemote::networkPush(const NetworkRemote& remote, const string& passw
 }
 
 // 执行网络 pull 操作
-int CommandsRemote::networkPull(const NetworkRemote& remote, const string& password)
-{
+int CommandsRemote::networkPull(const NetworkRemote &remote, const string &password) {
 	cout << "Connecting to " << remote.host << ":" << remote.port << "...\n";
 
 	// 创建客户端配置
@@ -269,28 +234,24 @@ int CommandsRemote::networkPull(const NetworkRemote& remote, const string& passw
 	// 创建客户端并连接
 	Client client;
 
-	if (!client.connect())
-	{
+	if (!client.connect()) {
 		cerr << "Failed to connect to server\n";
 		return 1;
 	}
 
-	if (!client.authenticate())
-	{
+	if (!client.authenticate()) {
 		cerr << "Authentication failed\n";
 		return 1;
 	}
 
 	// 使用指定的仓库
-	if (!client.useRepository(remote.repo_name))
-	{
+	if (!client.useRepository(remote.repo_name)) {
 		cerr << "Failed to use repository: " << remote.repo_name << "\n";
 		return 1;
 	}
 
 	// 执行 pull
-	if (!client.pull())
-	{
+	if (!client.pull()) {
 		cerr << "Pull failed\n";
 		return 1;
 	}
@@ -299,8 +260,8 @@ int CommandsRemote::networkPull(const NetworkRemote& remote, const string& passw
 	return 0;
 }
 
-int CommandsRemote::networkLog(const NetworkRemote& remote, const string& password, int max_count, bool line)
-{
+int CommandsRemote::networkLog(const NetworkRemote &remote, const string &password, int max_count,
+							   bool line) {
 	cout << "Connecting to " << remote.host << ":" << remote.port << "...\n";
 
 	// 创建客户端配置
@@ -311,21 +272,18 @@ int CommandsRemote::networkLog(const NetworkRemote& remote, const string& passwo
 	// 创建客户端并连接
 	Client client;
 
-	if (!client.connect())
-	{
+	if (!client.connect()) {
 		cerr << "Failed to connect to server\n";
 		return 1;
 	}
 
-	if (!client.authenticate())
-	{
+	if (!client.authenticate()) {
 		cerr << "Authentication failed\n";
 		return 1;
 	}
 
 	// 使用指定的仓库
-	if (!client.useRepository(remote.repo_name))
-	{
+	if (!client.useRepository(remote.repo_name)) {
 		cerr << "Failed to use repository: " << remote.repo_name << "\n";
 		return 1;
 	}
@@ -336,8 +294,7 @@ int CommandsRemote::networkLog(const NetworkRemote& remote, const string& passwo
 		cout << "no commits" << endl;
 	}
 
-	for (const auto& log_entry : logs)
-	{
+	for (const auto &log_entry : logs) {
 		cout << log_entry << "\n";
 	}
 

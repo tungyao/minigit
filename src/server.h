@@ -34,33 +34,50 @@ public:
 	void handleClient(int client_socket);
 
 	// 认证和会话管理 - 委托给 ServerAuth 模块
-	bool handleAuthRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handleLoginRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+	bool handleAuthRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                       const ProtocolMessage &msg);
+	bool handleLoginRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                        const ProtocolMessage &msg);
 	bool handleHeartbeat(int client_socket, shared_ptr<class ClientSession> session);
 	void cleanupExpiredSessions();
-	bool processMessage(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	void sendErrorResponse(int client_socket, StatusCode status, const string& message);
+	bool processMessage(int client_socket, shared_ptr<class ClientSession> session,
+	                    const ProtocolMessage &msg);
+	void sendErrorResponse(int client_socket, StatusCode status, const string &message);
 
 	// 仓库管理 - 委托给 ServerRepository 模块
-	bool handleListReposRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handleUseRepoRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handleCreateRepoRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handleRemoveRepoRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+	bool handleListReposRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                            const ProtocolMessage &msg);
+	bool handleUseRepoRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                          const ProtocolMessage &msg);
+	bool handleCreateRepoRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                             const ProtocolMessage &msg);
+	bool handleRemoveRepoRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                             const ProtocolMessage &msg);
 
 	// Git操作管理 - 委托给 ServerGitOps 模块
-	bool handlePushRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handlePushCheckRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handlePushCommitData(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handlePushObjectData(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handlePushObjectDataCompressed(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handlePullRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handlePullCheckRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handleCloneRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
-	bool handleLogRequest(int client_socket, shared_ptr<class ClientSession> session, const ProtocolMessage& msg);
+	bool handlePushRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                       const ProtocolMessage &msg);
+	bool handlePushCheckRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                            const ProtocolMessage &msg);
+	bool handlePushCommitData(int client_socket, shared_ptr<class ClientSession> session,
+	                          const ProtocolMessage &msg);
+	bool handlePushObjectData(int client_socket, shared_ptr<class ClientSession> session,
+	                          const ProtocolMessage &msg);
+	bool handlePushObjectDataCompressed(int client_socket, shared_ptr<class ClientSession> session,
+	                                    const ProtocolMessage &msg);
+	bool handlePullRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                       const ProtocolMessage &msg);
+	bool handlePullCheckRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                            const ProtocolMessage &msg);
+	bool handleCloneRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                        const ProtocolMessage &msg);
+	bool handleLogRequest(int client_socket, shared_ptr<class ClientSession> session,
+	                      const ProtocolMessage &msg);
 
 	// Git操作辅助方法
-	bool validatePushCommitIsLatest(const string& repo_name, const string& client_commit_parent, const string& current_remote_head);
-	bool sendCloneFile(int client_socket, const string& relative_path, const fs::path& file_path);
+	bool validatePushCommitIsLatest(const string &repo_name, const string &client_commit_parent,
+	                                const string &current_remote_head);
+	bool sendCloneFile(int client_socket, const string &relative_path, const fs::path &file_path);
 
 private:
 	bool running_;
@@ -81,9 +98,9 @@ private:
  */
 class ServerCommand {
 public:
-	static int parseAndRun(const vector<string>& args);
+	static int parseAndRun(const vector<string> &args);
 
 private:
-	static void parseConfig(const vector<string>& args);
+	static void parseConfig(const vector<string> &args);
 	static void printUsage();
 };

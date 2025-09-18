@@ -14,8 +14,8 @@
 #include <arpa/inet.h>
 #endif
 
-inline bool resolveHost(const std::string& server_host, std::string& ip) {
-	struct addrinfo hints, * result;
+inline bool resolveHost(const std::string &server_host, std::string &ip) {
+	struct addrinfo hints, *result;
 	int status;
 
 	memset(&hints, 0, sizeof(hints));
@@ -34,7 +34,7 @@ inline bool resolveHost(const std::string& server_host, std::string& ip) {
 		return false;
 	}
 
-	struct sockaddr_in* sockaddr_ipv4 = (struct sockaddr_in*)result->ai_addr;
+	struct sockaddr_in *sockaddr_ipv4 = (struct sockaddr_in *)result->ai_addr;
 	char rip[INET_ADDRSTRLEN];
 
 #ifdef _WIN32
@@ -52,7 +52,7 @@ inline bool resolveHost(const std::string& server_host, std::string& ip) {
 }
 
 
-inline uint32_t crc32(const vector<uint8_t>& data) {
+inline uint32_t crc32(const vector<uint8_t> &data) {
 	uint32_t crc = 0xFFFFFFFF;
 
 	for (uint8_t byte : data) {
@@ -60,8 +60,7 @@ inline uint32_t crc32(const vector<uint8_t>& data) {
 		for (int i = 0; i < 8; i++) {
 			if (crc & 1) {
 				crc = (crc >> 1) ^ 0xEDB88320;
-			}
-			else {
+			} else {
 				crc >>= 1;
 			}
 		}

@@ -8,11 +8,11 @@
  * 提交数据结构
  */
 struct Commit {
-    string id;
-    string parent;
-    string message;
-    string timestamp;
-    map<string, string> tree;
+	string id;
+	string parent;
+	string message;
+	string timestamp;
+	map<string, string> tree;
 };
 
 /**
@@ -21,14 +21,15 @@ struct Commit {
  */
 class CommitManager {
 public:
-    // 提交操作
-    static string storeCommit(const Commit& c);
-    static optional<Commit> loadCommit(const string& id);
-    
-    // 序列化操作
-    static string serializeCommit(const Commit& c);
-    static Commit deserializeCommit(const string& raw);
-    
-    // 工具函数
-    static string nowISO8601();
+	// 提交操作
+	static string storeCommit(const Commit &c);
+	static optional<Commit> loadCommit(const string &id);
+	static optional<Commit> loadCommit(string repo_name, const string &id);
+
+	// 序列化操作
+	static string serializeCommit(const Commit &c);
+	static Commit deserializeCommit(const string &raw);
+
+	// 工具函数
+	static string nowISO8601();
 };

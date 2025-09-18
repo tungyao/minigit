@@ -7,22 +7,39 @@
  * 提供MiniGit所需的文件和目录操作
  */
 class FileSystemUtils {
+private:
+	FileSystemUtils(const FileSystemUtils &) = delete;
+	FileSystemUtils &operator=(const FileSystemUtils &) = delete;
+
+	FileSystemUtils() = default;
+	~FileSystemUtils() = default;
+
+	string repo;
+
 public:
+	static FileSystemUtils& getInstance() {
+		static FileSystemUtils instance;
+		return instance;
+	}
+
+	bool endsWith(const std::string &str, const std::string &suffix);
 	// 仓库路径相关
-	static fs::path repoRoot();
-	static fs::path mgDir();
-	static fs::path objectsDir();
-	static fs::path indexPath();
-	static fs::path headPath();
-	static fs::path configPath();
+	fs::path repoRoot();
+	fs::path mgDir();
+	fs::path objectsDir();
+	fs::path indexPath();
+	fs::path headPath();
+	fs::path configPath();
+
+	void useRepo(const string & repo_name);
 
 	// 文件操作
-	static void writeText(const fs::path& p, const string& s);
-	static string readText(const fs::path& p);
-	static void writeBinary(const fs::path& p, const vector<uint8_t>& data);
-	static vector<uint8_t> readBinary(const fs::path& p);
+	void writeText(const fs::path &p, const string &s);
+	string readText(const fs::path &p);
+	void writeBinary(const fs::path &p, const vector<uint8_t> &data);
+	vector<uint8_t> readBinary(const fs::path &p);
 
 	// 仓库检查
-	static void ensureRepo();
-	static bool isIgnored(const fs::path& p);
+	void ensureRepo();
+	bool isIgnored(const fs::path &p);
 };
