@@ -40,9 +40,6 @@ int Commands::add(vector<string> args) {
 			untracked_files.insert(file_status.path);
 		} else if (file_status.status == "D") {
 			deleted_files.insert(file_status.path);
-		} else if (file_status.status == "HD") {
-			// 历史删除的文件也视为删除文件处理
-			deleted_files.insert(file_status.path);
 		} else if (file_status.status == "R") {
 			renamed_files[file_status.path] = file_status.old_path;
 		}
@@ -372,8 +369,6 @@ int Commands::status() {
 				cout << " (deleted)";
 			} else if (file_status.status == "??") {
 				cout << " (untracked)";
-			} else if (file_status.status == "HD") {
-				cout << " (historically deleted)";
 			}
 			cout << "\n";
 		}
@@ -823,14 +818,11 @@ vector<Commands::FileStatus> Commands::getWorkingDirectoryStatus() {
 		}
 	}
 
-	// 获取历史提交中所有曾经存在的文件（用于检测意外删除）
-	Index::IndexMap historical_files = getHistoricalFiles(head_commit_id);
-
 	// 获取工作目录中的所有文件
 	vector<string> working_files;
 	scanWorkingDirectory(FileSystemUtils::getInstance().repoRoot(), working_files);
 
-	// 创建所有文件的集合（HEAD提交 + 暂存区 + 工作目录 + 历史文件）
+	// 创建所有文件的集合（HEAD提交 + 暂存区 + 工作目录）
 	set<string> all_files;
 	for (const auto &kv : head_files) {
 		all_files.insert(kv.first);
@@ -840,10 +832,6 @@ vector<Commands::FileStatus> Commands::getWorkingDirectoryStatus() {
 	}
 	for (const auto &file : working_files) {
 		all_files.insert(file);
-	}
-	// 添加历史文件到检测集合
-	for (const auto &kv : historical_files) {
-		all_files.insert(kv.first);
 	}
 
 	// 分析每个文件的状态
@@ -855,7 +843,6 @@ vector<Commands::FileStatus> Commands::getWorkingDirectoryStatus() {
 		bool exists_in_working = fs::exists(full_path);
 		bool exists_in_index = index.find(file_path) != index.end();
 		bool exists_in_head = head_files.find(file_path) != head_files.end();
-		bool exists_in_history = historical_files.find(file_path) != historical_files.end();
 
 		string head_hash;
 		if (exists_in_head) {
@@ -882,10 +869,6 @@ vector<Commands::FileStatus> Commands::getWorkingDirectoryStatus() {
 			// 情况2: 在HEAD中存在，但已从工作目录删除，且未暂存删除操作
 			status.status = "D";
 			status.staged_hash = head_hash; // 保存HEAD中的哈希用于对比
-		} else if (!exists_in_head && !exists_in_index && !exists_in_working && exists_in_history) {
-			// 情况新增: 在历史提交中存在但现在完全不存在的文件（可能被意外删除）
-			status.status = "HD";							  // Historical Deleted - 历史删除
-			status.staged_hash = historical_files[file_path]; // 使用历史中最后一次的哈希
 		} else if (exists_in_head && exists_in_index && !exists_in_working) {
 			// 情况3: 在HEAD和暂存区中存在，但已从工作目录删除
 			if (head_hash == staged_hash) {
@@ -1009,9 +992,6 @@ int Commands::diff(vector<string> args) {
 					cout << " (modified in stage, then deleted)";
 				} else if (file_status.status == "MM") {
 					cout << " (modified in stage and working directory)";
-				} else if (file_status.status == "HD") {
-					cout << " (historically deleted - existed in commit "
-						 << file_status.staged_hash.substr(0, 12) << ")";
 				}
 				cout << "\n";
 			}
