@@ -872,8 +872,7 @@ bool Client::clone(const string &repo_name) {
 			cerr << "Warning: Could not restore " << kv.first << ": " << e.what() << "\n";
 		}
 	}
-	cout << "clone success"
-		 << "\n";
+	cout << "clone success" << "\n";
 	return true;
 }
 

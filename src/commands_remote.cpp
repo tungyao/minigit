@@ -126,8 +126,7 @@ int CommandsRemote::pull(vector<string> args) {
 	// 原有的本地文件系统pull逻辑
 	fs::path r = remote;
 	if (!fs::exists(r)) {
-		cerr << "Remote path missing."
-			 << "\n";
+		cerr << "Remote path missing." << "\n";
 		return 1;
 	}
 	// copy objects from remote
