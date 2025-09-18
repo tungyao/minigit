@@ -9,9 +9,9 @@
    modification, are permitted provided that the following conditions are
    met:
 
-       * Redistributions of source code must retain the above copyright
+	   * Redistributions of source code must retain the above copyright
    notice, this list of conditions and the following disclaimer.
-       * Redistributions in binary form must reproduce the above
+	   * Redistributions in binary form must reproduce the above
    copyright notice, this list of conditions and the following disclaimer
    in the documentation and/or other materials provided with the
    distribution.
@@ -32,15 +32,15 @@
    - LZ4 source repository : https://github.com/lz4/lz4
    - LZ4 public forum : https://groups.google.com/forum/#!forum/lz4c
 */
-#if defined (__cplusplus)
+#if defined(__cplusplus)
 extern "C" {
 #endif
 
 #ifndef LZ4FILE_H
 #define LZ4FILE_H
 
-#include <stdio.h>  /* FILE* */
 #include "lz4frame_static.h"
+#include <stdio.h> /* FILE* */
 
 typedef struct LZ4_readFile_s LZ4_readFile_t;
 typedef struct LZ4_writeFile_s LZ4_writeFile_t;
@@ -61,7 +61,7 @@ typedef struct LZ4_writeFile_s LZ4_writeFile_t;
  *
  * @note Must be closed with LZ4F_readClose() when done.
  */
-LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_readOpen(LZ4_readFile_t** lz4fRead, FILE* fp);
+LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_readOpen(LZ4_readFile_t **lz4fRead, FILE *fp);
 
 /*! LZ4F_read() :
  * Read lz4file content to buffer.
@@ -69,13 +69,13 @@ LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_readOpen(LZ4_readFile_t** lz4fRead, FIL
  * `buf` read data buffer.
  * `size` read data buffer size.
  */
-LZ4FLIB_STATIC_API size_t LZ4F_read(LZ4_readFile_t* lz4fRead, void* buf, size_t size);
+LZ4FLIB_STATIC_API size_t LZ4F_read(LZ4_readFile_t *lz4fRead, void *buf, size_t size);
 
 /*! LZ4F_readClose() :
  * Close lz4file handle.
  * `lz4f` must use LZ4_readOpen to set first.
  */
-LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_readClose(LZ4_readFile_t* lz4fRead);
+LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_readClose(LZ4_readFile_t *lz4fRead);
 
 /** LZ4 File Decompression **/
 
@@ -93,7 +93,8 @@ LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_readClose(LZ4_readFile_t* lz4fRead);
  *
  * @note Must be closed with LZ4F_writeClose() when done.
  */
-LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_writeOpen(LZ4_writeFile_t** lz4fWrite, FILE* fp, const LZ4F_preferences_t* prefsPtr);
+LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_writeOpen(LZ4_writeFile_t **lz4fWrite, FILE *fp,
+												   const LZ4F_preferences_t *prefsPtr);
 
 /*! LZ4F_write() :
  * Write buffer to lz4file.
@@ -101,16 +102,16 @@ LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_writeOpen(LZ4_writeFile_t** lz4fWrite, 
  * `buf` write data buffer.
  * `size` write data buffer size.
  */
-LZ4FLIB_STATIC_API size_t LZ4F_write(LZ4_writeFile_t* lz4fWrite, const void* buf, size_t size);
+LZ4FLIB_STATIC_API size_t LZ4F_write(LZ4_writeFile_t *lz4fWrite, const void *buf, size_t size);
 
 /*! LZ4F_writeClose() :
  * Close lz4file handle.
  * `lz4f` must use LZ4F_writeOpen to set first.
  */
-LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_writeClose(LZ4_writeFile_t* lz4fWrite);
+LZ4FLIB_STATIC_API LZ4F_errorCode_t LZ4F_writeClose(LZ4_writeFile_t *lz4fWrite);
 
 #endif /* LZ4FILE_H */
 
-#if defined (__cplusplus)
+#if defined(__cplusplus)
 }
 #endif

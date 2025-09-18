@@ -9,12 +9,12 @@
  */
 class Index {
 public:
-    using IndexMap = map<string, string>;
-    
-    // 读取和写入暂存区
-    static IndexMap read();
-    static void write(const IndexMap& index);
-    
-    // 暂存文件操作
-    static void stagePath(const fs::path& p, IndexMap& idx);
+	using IndexMap = map<string, string>;
+
+	// 读取和写入暂存区
+	static IndexMap read();
+	static void write(const IndexMap &index);
+
+	// 暂存文件操作
+	static void stagePath(const fs::path &p, IndexMap &idx);
 };
