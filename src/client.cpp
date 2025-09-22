@@ -611,7 +611,10 @@ bool Client::push() {
 	auto commit_push = ProtocolMessage::createPushObjectDataCompressed(
 		MessageType::PUSH_OBJECT_DATA_COMPRESSED, 0, compressed_archive, raw_size,
 		files_to_push.size());
-	if (!NetworkUtils::sendMessage(client_socket_, commit_push)) {
+	if (!NetworkUtils::sendMessage(
+			client_socket_, commit_push, [raw_size](int progress, const string &description) {
+				ProgressDisplay::showTransferProgress(progress, raw_size, description);
+			})) {
 		cerr << "Failed to send commit compress data for " << last_commit_id << "\n";
 		return false;
 	}
@@ -1237,7 +1240,7 @@ bool Client::receiveCloneData(const string &repo_name) {
 
 		cout << "Cloning repository '" << repo_name << "'...\n";
 		cout << "Total files: " << start_payload.total_files << "\n";
-		cout << "Total size: " << start_payload.total_size << " bytes\n";
+		cout << "Total size: " << ProgressDisplay::formatFileSize(start_payload.total_size) << "\n";
 
 		// 创建本地目录
 		fs::create_directories(local_repo_path);
@@ -1246,7 +1249,11 @@ bool Client::receiveCloneData(const string &repo_name) {
 		uint32_t files_received = 0;
 		while (files_received < start_payload.total_files) {
 			ProtocolMessage file_msg;
-			if (!NetworkUtils::receiveMessage(client_socket_, file_msg)) {
+			if (!NetworkUtils::receiveMessage(client_socket_, file_msg,
+											  [start_payload](size_t progress, const string &des) {
+												  ProgressDisplay::showTransferProgress(
+													  progress, start_payload.total_size, des);
+											  })) {
 				cerr << "Failed to receive file message\n";
 				return false;
 			}

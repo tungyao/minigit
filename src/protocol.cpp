@@ -1,6 +1,7 @@
 #include "protocol.h"
 
 #include <cstring>
+#include <utility>
 
 #include "sha256.h"
 
@@ -566,16 +567,18 @@ uint32_t ProtocolMessage::calculateCRC32(const vector<uint8_t> &data) {
 // NetworkUtils实现
 
 // 发送完整消息
-bool NetworkUtils::sendMessage(int socket, const ProtocolMessage &msg) {
+bool NetworkUtils::sendMessage(int socket, const ProtocolMessage &msg,
+							   const sendMessageProgressCallback &progress_callback) {
 	vector<uint8_t> data = msg.serialize();
 #ifdef DEBUG
 	cout << "send msg size " << data.size() << endl;
 #endif // DEBUG
-	return sendData(socket, data.data(), data.size());
+	return sendData(socket, data.data(), data.size(), progress_callback);
 }
 
 // 接收完整消息
-bool NetworkUtils::receiveMessage(int socket, ProtocolMessage &msg) {
+bool NetworkUtils::receiveMessage(int socket, ProtocolMessage &msg,
+								  const receiveMessageProgressCallback &progress_callback) {
 	// 首先接收消息头
 	MessageHeader header;
 	if (!receiveData(socket, &header, sizeof(MessageHeader))) {
@@ -594,7 +597,7 @@ bool NetworkUtils::receiveMessage(int socket, ProtocolMessage &msg) {
 	// 接收负载数据
 	vector<uint8_t> payload(header.payload_size);
 	if (header.payload_size > 0) {
-		if (!receiveData(socket, payload.data(), header.payload_size)) {
+		if (!receiveData(socket, payload.data(), header.payload_size, progress_callback)) {
 			return false;
 		}
 	}
@@ -608,11 +611,12 @@ bool NetworkUtils::receiveMessage(int socket, ProtocolMessage &msg) {
 }
 
 // 发送原始数据
-bool NetworkUtils::sendData(int socket, const void *data, size_t size) {
+bool NetworkUtils::sendData(int socket, const void *data, size_t size,
+							const sendMessageProgressCallback &progress_callback) {
 	const char *ptr = static_cast<const char *>(data);
 	size_t remaining = size;
 	int retry_count = 0;
-
+	size_t total = 0;
 	while (remaining > 0) {
 		size_t chunk_size = min(remaining, static_cast<size_t>(CHUNK_SIZE));
 
@@ -640,19 +644,24 @@ bool NetworkUtils::sendData(int socket, const void *data, size_t size) {
 #endif
 
 		ptr += sent;
+		total += sent;
 		remaining -= sent;
 		retry_count = 0;
+		if (progress_callback) {
+			progress_callback(total, "sending");
+		}
 	}
 
 	return true;
 }
 
 // 接收原始数据
-bool NetworkUtils::receiveData(int socket, void *buffer, size_t size) {
+bool NetworkUtils::receiveData(int socket, void *buffer, size_t size,
+							   const receiveMessageProgressCallback &progress_callback) {
 	char *ptr = static_cast<char *>(buffer);
 	size_t remaining = size;
 	int retry_count = 0;
-
+	size_t total = 0;
 	while (remaining > 0) {
 		size_t chunk_size = min(remaining, static_cast<size_t>(CHUNK_SIZE));
 		int get_size = static_cast<int>(chunk_size);
@@ -689,8 +698,12 @@ bool NetworkUtils::receiveData(int socket, void *buffer, size_t size) {
 #endif
 
 		ptr += received;
+		total += received;
 		remaining -= received;
 		retry_count = 0;
+		if (progress_callback) {
+			progress_callback(total, "receiving");
+		}
 	}
 
 	return true;

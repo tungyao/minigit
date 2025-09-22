@@ -18,7 +18,7 @@ bool CompressionUtils::compressFile(const fs::path &file_path, vector<uint8_t> &
 	}
 
 	if (progress_callback) {
-		progress_callback(0, "读取文件: " + file_path.filename().string());
+		progress_callback(0, "read file: " + file_path.filename().string());
 	}
 
 	// 读取文件数据
@@ -30,7 +30,7 @@ bool CompressionUtils::compressFile(const fs::path &file_path, vector<uint8_t> &
 	}
 
 	if (progress_callback) {
-		progress_callback(30, "压缩文件数据...");
+		progress_callback(30, "compress file...");
 	}
 
 	// 压缩数据
@@ -43,7 +43,7 @@ bool CompressionUtils::compressFile(const fs::path &file_path, vector<uint8_t> &
 	});
 
 	if (progress_callback && result) {
-		progress_callback(100, "文件压缩完成");
+		progress_callback(100, "compress data complate");
 	}
 
 	return result;
@@ -53,7 +53,7 @@ bool CompressionUtils::decompressToFile(const vector<uint8_t> &compressed_data,
 										const fs::path &file_path,
 										ProgressCallback progress_callback) {
 	if (progress_callback) {
-		progress_callback(0, "开始解压缩到: " + file_path.filename().string());
+		progress_callback(0, "start decompression to: " + file_path.filename().string());
 	}
 
 	vector<uint8_t> decompressed_data;
@@ -71,7 +71,7 @@ bool CompressionUtils::decompressToFile(const vector<uint8_t> &compressed_data,
 	}
 
 	if (progress_callback) {
-		progress_callback(80, "写入文件...");
+		progress_callback(80, "write file...");
 	}
 
 	// 确保目录存在
@@ -85,7 +85,7 @@ bool CompressionUtils::decompressToFile(const vector<uint8_t> &compressed_data,
 	}
 
 	if (progress_callback) {
-		progress_callback(100, "解压缩完成");
+		progress_callback(100, "decompress complated");
 	}
 
 	return true;
@@ -155,7 +155,7 @@ bool CompressionUtils::decompressData(const vector<uint8_t> &packed_data, vector
 	output.resize(original_size);
 
 	if (progress_callback) {
-		progress_callback(10, "准备解压缩...");
+		progress_callback(10, "preparing to decompress...");
 	}
 
 	// 解压
@@ -174,7 +174,7 @@ bool CompressionUtils::decompressData(const vector<uint8_t> &packed_data, vector
 	output.resize(decompressed_size);
 
 	if (progress_callback) {
-		progress_callback(100, "解压缩完成");
+		progress_callback(100, "decompression completed");
 	}
 
 	return true;
@@ -189,7 +189,7 @@ bool CompressionUtils::createCompressedArchive(const vector<fs::path> &file_path
 	}
 
 	if (progress_callback) {
-		progress_callback(0, "创建归档...");
+		progress_callback(0, "create archive...");
 	}
 
 	// 构建归档数据
@@ -221,7 +221,7 @@ bool CompressionUtils::createCompressedArchive(const vector<fs::path> &file_path
 
 		if (progress_callback) {
 			int progress = 10 + (i * 40 / file_paths.size());
-			progress_callback(progress, "添加文件: " + file_path.filename().string());
+			progress_callback(progress, "add file: " + file_path.filename().string());
 		}
 
 		if (!fs::exists(full_path) || !fs::is_regular_file(full_path)) {
@@ -255,7 +255,7 @@ bool CompressionUtils::createCompressedArchive(const vector<fs::path> &file_path
 	}
 
 	if (progress_callback) {
-		progress_callback(50, "压缩归档数据...");
+		progress_callback(50, "compress archive data...");
 	}
 	raw_size = raw_archive.size();
 	// 压缩整个归档
@@ -266,10 +266,10 @@ bool CompressionUtils::createCompressedArchive(const vector<fs::path> &file_path
 		}
 	});
 
-	if (progress_callback && result) {
-		string ratio = getCompressionRatio(raw_archive.size(), archive_data.size());
-		progress_callback(100, "归档创建完成 " + ratio);
-	}
+	// if (progress_callback && result) {
+	// 	string ratio = getCompressionRatio(raw_archive.size(), archive_data.size());
+	// 	progress_callback(100, "archiving has been completed" + ratio);
+	// }
 
 	return result;
 }
@@ -282,7 +282,7 @@ bool CompressionUtils::extractCompressedArchive(const vector<uint8_t> &archive_d
 	}
 
 	if (progress_callback) {
-		progress_callback(0, "解压缩归档...");
+		progress_callback(0, "unarchive...");
 	}
 
 	// 解压缩归档数据
@@ -299,7 +299,7 @@ bool CompressionUtils::extractCompressedArchive(const vector<uint8_t> &archive_d
 	}
 
 	if (progress_callback) {
-		progress_callback(30, "解析归档结构...");
+		progress_callback(30, "analysis of the archive...");
 	}
 
 	// 解析归档头部
@@ -321,12 +321,6 @@ bool CompressionUtils::extractCompressedArchive(const vector<uint8_t> &archive_d
 
 	// 提取文件
 	for (uint32_t i = 0; i < header.file_count; ++i) {
-		if (progress_callback) {
-			int progress = 30 + (i * 70 / header.file_count);
-			progress_callback(progress,
-							  "提取文件 " + to_string(i + 1) + "/" + to_string(header.file_count));
-		}
-
 		if (offset + sizeof(ArchiveEntry) > raw_archive.size()) {
 			return false;
 		}
@@ -343,7 +337,10 @@ bool CompressionUtils::extractCompressedArchive(const vector<uint8_t> &archive_d
 		string file_path_str(reinterpret_cast<const char *>(raw_archive.data() + offset),
 							 entry.path_length);
 		offset += entry.path_length;
-
+		if (progress_callback) {
+			int progress = 30 + (i * 70 / header.file_count);
+			progress_callback(progress, to_string(i + 1) + "/" + to_string(header.file_count));
+		}
 		// 读取文件数据
 		if (offset + entry.file_size > raw_archive.size()) {
 			return false;
@@ -364,9 +361,7 @@ bool CompressionUtils::extractCompressedArchive(const vector<uint8_t> &archive_d
 		} else {
 			full_output_path = output_path / MARKNAME / file_path_str;
 		}
-		cout << "file_path_str " << file_path_str << endl;
-		cout << "full_output_path " << full_output_path << endl;
-		// 写入文件
+		cout << "  " << file_path_str;
 		fs::create_directories(full_output_path.parent_path());
 
 		try {
@@ -377,7 +372,7 @@ bool CompressionUtils::extractCompressedArchive(const vector<uint8_t> &archive_d
 	}
 
 	if (progress_callback) {
-		progress_callback(100, "归档提取完成");
+		progress_callback(100, "unarchive complete");
 	}
 
 	return true;
@@ -391,6 +386,6 @@ string CompressionUtils::getCompressionRatio(size_t original_size, size_t compre
 	double ratio = (1.0 - static_cast<double>(compressed_size) / original_size) * 100;
 
 	ostringstream oss;
-	oss << "(" << fixed << setprecision(1) << ratio << "% 压缩)";
+	oss << "(" << fixed << setprecision(1) << ratio << "% compression)";
 	return oss.str();
 }

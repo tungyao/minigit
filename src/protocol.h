@@ -389,22 +389,27 @@ public:
 	static uint32_t calculateCRC32(const vector<uint8_t> &data);
 };
 
+#include <functional>
 /**
  * 网络传输工具类
  */
 class NetworkUtils {
 public:
+	using sendMessageProgressCallback = std::function<void(size_t progress, const string &description)>;
+	using receiveMessageProgressCallback = std::function<void(size_t progress, const string &description)>;
+
+
 	// 发送完整消息
-	static bool sendMessage(int socket, const ProtocolMessage &msg);
+	static bool sendMessage(int socket, const ProtocolMessage& msg, const sendMessageProgressCallback& progress_callback = nullptr);
 
 	// 接收完整消息
-	static bool receiveMessage(int socket, ProtocolMessage &msg);
+	static bool receiveMessage(int socket, ProtocolMessage& msg, const receiveMessageProgressCallback& progress_callback = nullptr);
 
 	// 发送原始数据
-	static bool sendData(int socket, const void *data, size_t size);
+	static bool sendData(int socket, const void* data, size_t size, const sendMessageProgressCallback& progress_callback = nullptr);
 
 	// 接收原始数据
-	static bool receiveData(int socket, void *buffer, size_t size);
+	static bool receiveData(int socket, void* buffer, size_t size, const receiveMessageProgressCallback& progress_callback = nullptr);
 
 	// 设置socket超时
 	static bool setSocketTimeout(int socket, int timeout_seconds);

@@ -9,8 +9,8 @@ void ProgressDisplay::showProgress(int progress, const string &description, bool
 	int bar_width = PROGRESS_BAR_WIDTH;
 	int filled = (progress * bar_width) / 100;
 
-	cout << "\r"; // 回到行首
-	cout << description << " [";
+	cout << "\n"; // 回到行首
+	cout << " [";
 
 	// 绘制进度条
 	for (int i = 0; i < bar_width; ++i) {
@@ -28,8 +28,22 @@ void ProgressDisplay::showProgress(int progress, const string &description, bool
 	if (show_percentage) {
 		cout << " " << setw(3) << progress << "%";
 	}
-
+	cout << "  " << description;
 	cout << flush;
+}
+
+static size_t last_len = 0;
+
+void ProgressDisplay::showTransferProgressNoTotal(size_t current, const string &description) {
+	std::ostringstream oss;
+	oss << "total recv: ";
+	oss << formatFileSize(current);
+	std::string line = oss.str();
+
+	// 清除上一次的输出（用空格覆盖）
+	cout << "\r" << string(last_len, ' ') << "\r";
+	cout << line << flush;
+	last_len = line.size();
 }
 
 void ProgressDisplay::showTransferProgress(size_t current, size_t total,
@@ -41,26 +55,35 @@ void ProgressDisplay::showTransferProgress(size_t current, size_t total,
 
 	int progress = static_cast<int>((current * 100) / total);
 
-	cout << "\r"; // 回到行首
-	cout << description << " [";
+	std::ostringstream oss;
+	oss << " [";
 
 	int bar_width = PROGRESS_BAR_WIDTH;
 	int filled = (progress * bar_width) / 100;
 
-	// 绘制进度条
 	for (int i = 0; i < bar_width; ++i) {
 		if (i < filled) {
-			cout << "=";
+			oss << "=";
 		} else if (i == filled && progress < 100) {
-			cout << ">";
+			oss << ">";
 		} else {
-			cout << " ";
+			oss << " ";
 		}
 	}
 
-	cout << "] " << setw(3) << progress << "% ";
-	cout << "(" << formatFileSize(current) << "/" << formatFileSize(total) << ")";
-	cout << flush;
+	oss << "] " << setw(3) << progress << "% "
+		<< "(" << formatFileSize(current) << "/" << formatFileSize(total) << ")";
+
+	std::string line = oss.str();
+
+	// 清除上一次的输出（用空格覆盖）
+	cout << "\r" << string(last_len, ' ') << "\r";
+	if (progress == 100) {
+		line += "\n";
+	}
+	cout << line << flush;
+
+	last_len = line.size();
 }
 
 void ProgressDisplay::showCompressionProgress(int progress, const string &operation,

@@ -24,6 +24,7 @@ public:
 	 */
 	static void showTransferProgress(size_t current, size_t total, const string &description);
 
+	static void showTransferProgressNoTotal(size_t current , const string & description);
 	/**
 	 * 显示压缩进度
 	 * @param progress 进度百分比 (0-100)
