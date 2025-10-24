@@ -723,68 +723,28 @@ bool Client::pull() {
 	cout << "Receiving " << check_payload.commits_count << " commit(s)...\n";
 	ProtocolMessage pull_response;
 
-	// 接收提交和对象数据
-	for (uint32_t i = 0; i < check_payload.commits_count; i++) {
-		// 接收提交数据
-		ProtocolMessage commit_msg;
-		if (!NetworkUtils::receiveMessage(client_socket_, commit_msg)) {
-			cerr << "Failed to receive commit data\n";
+	// 接收下发的所有对象
+	while (true) {
+		ProtocolMessage obj_msg;
+		if (!NetworkUtils::receiveMessage(client_socket_, obj_msg)) {
+			cerr << "Failed to receive message\n";
 			return false;
 		}
 
-		if (commit_msg.header.type == MessageType::ERROR_MSG) {
-			cerr << "Error: " << commit_msg.getStringPayload() << "\n";
+		if (obj_msg.header.type == MessageType::ERROR_MSG) {
+			cerr << "Error: " << obj_msg.getStringPayload() << "\n";
 			return false;
-		}
-
-		if (commit_msg.header.type != MessageType::PULL_COMMIT_DATA) {
-			cerr << "Expected commit data, got message type: "
-				 << static_cast<int>(commit_msg.header.type) << "\n";
-			return false;
-		}
-
-		if (!receiveCommitData(commit_msg)) {
-			cerr << "Failed to process commit data\n";
-			return false;
-		}
-
-		// 接收该提交的所有对象
-		while (true) {
-			ProtocolMessage obj_msg;
-			if (!NetworkUtils::receiveMessage(client_socket_, obj_msg)) {
-				cerr << "Failed to receive message\n";
+		} else if (obj_msg.header.type == MessageType::PULL_OBJECT_DATA_COMPRESSED) {
+			if (!receiveCompressedObjectData(obj_msg)) {
+				cerr << "Failed to process compressed object data\n";
 				return false;
 			}
-
-			if (obj_msg.header.type == MessageType::ERROR_MSG) {
-				cerr << "Error: " << obj_msg.getStringPayload() << "\n";
-				return false;
-			} else if (obj_msg.header.type == MessageType::PULL_OBJECT_DATA) {
-				if (!receiveObjectData(obj_msg)) {
-					cerr << "Failed to process object data\n";
-					return false;
-				}
-			} else if (obj_msg.header.type == MessageType::PULL_OBJECT_DATA_COMPRESSED) {
-				if (!receiveCompressedObjectData(obj_msg)) {
-					cerr << "Failed to process compressed object data\n";
-					return false;
-				}
-			} else if (obj_msg.header.type == MessageType::PULL_COMMIT_DATA) {
-				// 下一个提交开始了，退出对象循环
-				// 将消息放回去处理
-				if (!receiveCommitData(obj_msg)) {
-					cerr << "Failed to process commit data\n";
-					return false;
-				}
-				break;
-			} else if (obj_msg.header.type == MessageType::PULL_RESPONSE) {
-				// 拉取完成
-				goto pull_completed_comp;
-			} else {
-				cerr << "Unexpected message type: " << static_cast<int>(obj_msg.header.type)
-					 << "\n";
-				return false;
-			}
+		} else if (obj_msg.header.type == MessageType::PULL_RESPONSE) {
+			// 拉取完成
+			goto pull_completed_comp;
+		} else {
+			cerr << "Unexpected message type: " << static_cast<int>(obj_msg.header.type) << "\n";
+			return false;
 		}
 	}
 

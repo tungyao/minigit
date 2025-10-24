@@ -1,4 +1,4 @@
-#include "commit.h"
+﻿#include "commit.h"
 
 string CommitManager::nowISO8601() {
 	using namespace std::chrono;
@@ -13,6 +13,22 @@ string CommitManager::nowISO8601() {
 	char buf[32];
 	strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
 	return string(buf);
+}
+
+std::set<string> CommitManager::commitsCount(const string &newer, const string &older) {
+	string parent_head = newer;
+	int commits_count = 0;
+	std::set<string> head;
+	while (parent_head != older) {
+		auto commits = CommitManager::loadCommit(parent_head);
+
+		if (commits) {
+			commits_count += 1;
+			head.insert(parent_head);
+			parent_head = commits->parent;
+		}
+	}
+	return head;
 }
 
 string CommitManager::serializeCommit(const Commit &c) {
@@ -97,6 +113,7 @@ string CommitManager::storeCommit(const Commit &c) {
 
 optional<Commit> CommitManager::loadCommit(const string &id) {
 	fs::path p = FileSystemUtils::getInstance().objectsDir() / id;
+	cout << "loadCommit " << p.string() << endl;
 	if (!fs::exists(p))
 		return nullopt;
 	string body = FileSystemUtils::getInstance().readText(p);

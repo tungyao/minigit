@@ -394,6 +394,7 @@ void Server::handleClient(int client_socket) {
 			}
 
 			session->updateActivity();
+			FileSystemUtils::getInstance().useRepo(session->current_repo);
 
 			// 处理消息
 			if (!processMessage(client_socket, session, msg)) {
@@ -1180,12 +1181,14 @@ bool Server::handlePullCheckRequest(int client_socket, shared_ptr<ClientSession>
 			reinterpret_cast<const char *>(msg.payload.data() + sizeof(PullCheckRequestPayload)),
 			check_payload.local_head_length);
 	}
-
+	cout << "pull check head " << local_head << endl;
 	// 获取远程仓库的HEAD
 	fs::path repo_path = impl_->repo_manager->getRepositoryPath(session->current_repo);
+	cout << "repo path " << repo_path.string() << endl;
 	string remote_head;
 	try {
 		fs::path remote_head_path = repo_path / MARKNAME / "HEAD";
+		cout << "remote_head_path " << remote_head_path.string() << endl;
 		if (fs::exists(remote_head_path)) {
 			ifstream head_file(remote_head_path);
 			if (head_file.is_open()) {
@@ -1201,118 +1204,98 @@ bool Server::handlePullCheckRequest(int client_socket, shared_ptr<ClientSession>
 	// 判断是否需要更新
 	bool has_updates = false;
 	uint32_t commits_count = 0;
-
+	cout << "remote head " << remote_head << " local head " << local_head << endl;
+	// remote is newer
 	if (remote_head != local_head) {
 		has_updates = true;
 		// 计算需要发送的提交数量
-		// 简化处理：如果不同就发送整个历史
-		commits_count = 1; // 简化为只发送一个提交
+		auto commits_head = CommitManager::commitsCount(remote_head, local_head);
+		commits_count = commits_head.size();
 
-		if (!remote_head.empty()) {
+		if (commits_count > 0) {
 			// 发送检查响应
+			cout << "check reponse " << commits_count << endl;
 			auto check_response =
 				ProtocolMessage::createPullCheckResponse(remote_head, has_updates, commits_count);
 			if (!NetworkUtils::sendMessage(client_socket, check_response)) {
 				return false;
 			}
+			// 收集所有需要发送的对象文件
+			vector<fs::path> files_to_send;
+			vector<fs::path> relative_paths;
+			// TODO package the required commits
+			for (auto &head : commits_head) {
+				fs::path commit_obj_path = repo_path / MARKNAME / "objects" / head;
+				// 需要添加head进去
+				files_to_send.push_back(commit_obj_path);
+				relative_paths.push_back(fs::path("objects") / head);
+				cout << "commit head " << head << endl;
+				if (fs::exists(commit_obj_path)) {
+					ifstream commit_file(commit_obj_path, ios::binary);
+					// 读取commit数据
+					if (commit_file.is_open()) {
+						vector<uint8_t> commit_data((istreambuf_iterator<char>(commit_file)), {});
+						commit_file.close();
 
-			// 发送commit数据
-			fs::path commit_obj_path = repo_path / MARKNAME / "objects" / remote_head;
-			if (fs::exists(commit_obj_path)) {
-				// 读取commit数据
-				ifstream commit_file(commit_obj_path, ios::binary);
-				if (commit_file.is_open()) {
-					vector<uint8_t> commit_data((istreambuf_iterator<char>(commit_file)), {});
-					commit_file.close();
+						// 发送commit数据
+						// auto commit_msg =
+						//	ProtocolMessage::createPullCommitData(remote_head, commit_data);
+						// if (!NetworkUtils::sendMessage(client_socket, commit_msg)) {
+						//	return false;
+						//}
 
-					// 发送commit数据
-					auto commit_msg =
-						ProtocolMessage::createPullCommitData(remote_head, commit_data);
-					if (!NetworkUtils::sendMessage(client_socket, commit_msg)) {
-						return false;
-					}
+						// 添加压缩
+						try {
+							string commit_content = string(commit_data.begin(), commit_data.end());
+							Commit commit = CommitManager::deserializeCommit(remote_head + "\n" +
+																			 commit_content);
 
-					// 发送该commit的所有对象 - 使用压缩
-					try {
-						string commit_content = string(commit_data.begin(), commit_data.end());
-						Commit commit =
-							CommitManager::deserializeCommit(remote_head + "\n" + commit_content);
-
-						// 收集所有需要发送的对象文件
-						vector<fs::path> files_to_send;
-						vector<fs::path> relative_paths;
-
-						// 添加所有tree中的对象
-						for (const auto &tree_item : commit.tree) {
-							const string &object_id = tree_item.second;
-							fs::path obj_path = repo_path / MARKNAME / "objects" / object_id;
-							if (fs::exists(obj_path)) {
-								files_to_send.push_back(obj_path);
-								relative_paths.push_back(fs::path("objects") / object_id);
-							}
-						}
-
-						if (!files_to_send.empty()) {
-							// 创建压缩归档
-							vector<uint8_t> compressed_archive;
-							uint32_t raw_size;
-							bool compression_success = CompressionUtils::createCompressedArchive(
-								relative_paths, repo_path / MARKNAME, compressed_archive, raw_size,
-								[](int progress, const string &description) {
-									// 服务器端可以记录日志，但不显示进度
-								});
-
-							if (compression_success) {
-								// 发送压缩的对象数据
-								auto compressed_msg =
-									ProtocolMessage::createPullObjectDataCompressed(
-										0, compressed_archive, raw_size, files_to_send.size());
-								if (!NetworkUtils::sendMessage(client_socket, compressed_msg)) {
-									return false;
-								}
-							} else {
-								// 如果压缩失败，回退到逐个发送
-								for (const auto &tree_item : commit.tree) {
-									const string &object_id = tree_item.second;
-									fs::path obj_path =
-										repo_path / MARKNAME / "objects" / object_id;
-									if (fs::exists(obj_path)) {
-										ifstream obj_file(obj_path, ios::binary);
-										if (obj_file.is_open()) {
-											vector<uint8_t> obj_data(
-												(istreambuf_iterator<char>(obj_file)), {});
-											obj_file.close();
-
-											auto obj_msg = ProtocolMessage::createPullObjectData(
-												object_id, obj_data);
-											if (!NetworkUtils::sendMessage(client_socket,
-																		   obj_msg)) {
-												return false;
-											}
-										}
-									}
+							// 添加所有tree中的对象
+							for (const auto &tree_item : commit.tree) {
+								const string &object_id = tree_item.second;
+								fs::path obj_path = repo_path / MARKNAME / "objects" / object_id;
+								if (fs::exists(obj_path)) {
+									files_to_send.push_back(obj_path);
+									relative_paths.push_back(fs::path("objects") / object_id);
 								}
 							}
+						} catch (const exception &e) {
+							// 如果解析commit失败，发送错误返回
 						}
-					} catch (const exception &e) {
-						// 如果解析commit失败，继续处理
 					}
-
-					// 发送拉取完成响应
-					auto pull_response = ProtocolMessage::createStringMessage(
-						MessageType::PULL_RESPONSE, "Pull completed");
-					return NetworkUtils::sendMessage(client_socket, pull_response);
 				}
 			}
+			if (!files_to_send.empty()) {
+				// 创建压缩归档
+				vector<uint8_t> compressed_archive;
+				uint32_t raw_size;
+				bool compression_success = CompressionUtils::createCompressedArchive(
+					relative_paths, repo_path / MARKNAME, compressed_archive, raw_size,
+					[](int progress, const string &description) {
+						// 服务器端可以记录日志，但不显示进度
+					});
+
+				if (compression_success) {
+					// 发送压缩的对象数据
+					auto compressed_msg = ProtocolMessage::createPullObjectDataCompressed(
+						0, compressed_archive, raw_size, files_to_send.size());
+					if (!NetworkUtils::sendMessage(client_socket, compressed_msg)) {
+						return false;
+					}
+				}
+			}
+			// 发送拉取完成响应
+			auto pull_response =
+				ProtocolMessage::createStringMessage(MessageType::PULL_RESPONSE, "Pull completed");
+			return NetworkUtils::sendMessage(client_socket, pull_response);
 		}
+
+		// 无需更新
+		auto response =
+			ProtocolMessage::createPullCheckResponse(remote_head, has_updates, commits_count);
+		return NetworkUtils::sendMessage(client_socket, response);
 	}
-
-	// 无需更新
-	auto response =
-		ProtocolMessage::createPullCheckResponse(remote_head, has_updates, commits_count);
-	return NetworkUtils::sendMessage(client_socket, response);
 }
-
 // 克隆请求处理
 bool Server::handleCloneRequest(int client_socket, shared_ptr<ClientSession> session,
 								const ProtocolMessage &msg) {

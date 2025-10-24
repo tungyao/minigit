@@ -20,7 +20,7 @@ struct Commit {
  * 管理提交的创建、序列化和反序列化
  */
 class CommitManager {
-public:
+  public:
 	// 提交操作
 	static string storeCommit(const Commit &c);
 	static optional<Commit> loadCommit(const string &id);
@@ -32,4 +32,5 @@ public:
 
 	// 工具函数
 	static string nowISO8601();
+	static std::set<string> commitsCount(const string &newer, const string &older);
 };
