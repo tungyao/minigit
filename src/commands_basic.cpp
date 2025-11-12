@@ -71,10 +71,10 @@ int CommandsBasic::add(vector<string> args) {
 		// 判断是否是忽略中的文件
 		bool isIgnore = should_ignore(ignore_rules, a);
 		bool isIgnore2 = should_ignore(ignore_rules, rel_path);
+		cout << "isIgnore=" << isIgnore << ", isIgnore2=" << isIgnore2 << "\n";
 		if (isIgnore && isIgnore2) {
 			continue;
 		}
-		continue;
 		// 如果是目录，遍历目录下的所有文件
 		if (fs::is_directory(abs_p)) {
 			vector<string> dir_files;
