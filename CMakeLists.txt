@@ -105,6 +105,8 @@ set(SOURCES
         src/client.cpp
         src/progress.cpp
         src/compression.cpp
+        src/mignore.h
+        src/mignore.cpp
 )
 
 # lz4

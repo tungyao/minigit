@@ -1,5 +1,6 @@
 #include "commands_basic.h"
 #include "client.h"
+#include "mignore.h"
 #include "sha256.h"
 
 int CommandsBasic::init() {
@@ -47,6 +48,7 @@ int CommandsBasic::add(vector<string> args) {
 	}
 
 	int added_count = 0;
+	auto ignore_rules = load_ignore();
 	for (auto &a : args) {
 		fs::path p = a;
 
@@ -56,8 +58,8 @@ int CommandsBasic::add(vector<string> args) {
 			fs::relative(abs_p, FileSystemUtils::getInstance().repoRoot()).generic_string();
 
 		// 调试输出
-		// cout << "Debug: arg=" << a << ", abs_path=" << abs_p.string() << ", rel_path=" <<
-		// rel_path << "\n";
+		cout << "Debug: arg=" << a << ", abs_path=" << abs_p.string() << ", rel_path=" << rel_path
+			 << "\n";
 
 		// 检查文件是否在删除文件列表中（即使物理文件不存在）
 		// bool is_deleted_file = deleted_files.count(rel_path) > 0;
@@ -66,7 +68,13 @@ int CommandsBasic::add(vector<string> args) {
 		// 	cerr << "skip missing: " << a << "\n";
 		// 	continue;
 		// }
-
+		// 判断是否是忽略中的文件
+		bool isIgnore = should_ignore(ignore_rules, a);
+		bool isIgnore2 = should_ignore(ignore_rules, rel_path);
+		if (isIgnore && isIgnore2) {
+			continue;
+		}
+		continue;
 		// 如果是目录，遍历目录下的所有文件
 		if (fs::is_directory(abs_p)) {
 			vector<string> dir_files;
@@ -352,6 +360,7 @@ vector<CommandsBasic::FileStatus> CommandsBasic::getWorkingDirectoryStatus() {
 
 	// 创建所有文件的集合（HEAD提交 + 暂存区 + 工作目录）
 	set<string> all_files;
+
 	for (const auto &kv : head_files) {
 		all_files.insert(kv.first);
 	}
@@ -361,6 +370,8 @@ vector<CommandsBasic::FileStatus> CommandsBasic::getWorkingDirectoryStatus() {
 	for (const auto &file : working_files) {
 		all_files.insert(file);
 	}
+
+	// remove ignore file
 
 	// 分析每个文件的状态
 	for (const string &file_path : all_files) {

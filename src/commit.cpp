@@ -113,7 +113,7 @@ string CommitManager::storeCommit(const Commit &c) {
 
 optional<Commit> CommitManager::loadCommit(const string &id) {
 	fs::path p = FileSystemUtils::getInstance().objectsDir() / id;
-	cout << "loadCommit " << p.string() << endl;
+	// cout << "loadCommit " << p.string() << endl;
 	if (!fs::exists(p))
 		return nullopt;
 	string body = FileSystemUtils::getInstance().readText(p);

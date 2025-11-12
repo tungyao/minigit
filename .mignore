@@ -1,0 +1,33 @@
+# Build directories
+build/
+bin/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Compiled objects
+*.o
+*.obj
+
+# Executables
+*.exe
+minigit
+minigit.exe
+
+# IDE files
+.vscode/
+.vs/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Test directories
+test_*/
+test/
+.minigit/
+.idea/
+.vscode/
+cmake-build-debug/
